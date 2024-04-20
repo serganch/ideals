@@ -48,7 +48,7 @@ abstract class RenameCommandTestBase extends LspLightBasePlatformTestCase {
       answer = new WorkspaceEdit(Stream.concat(changedEdits.stream(), changedOperations.stream()).toList());
     }
 
-    final var future = new RenameCommand(pos, newName).runAsync(getProject(), renameTestPath);
+    final var future = new RenameCommand(newName).runAsync(getProject(), renameTestPath.toLspUri(), pos);
     final var result = TestUtil.getNonBlockingEdt(future, 50000);
 
     assertNotNull(result);

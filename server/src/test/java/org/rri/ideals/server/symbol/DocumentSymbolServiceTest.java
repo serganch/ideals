@@ -1,6 +1,8 @@
 package org.rri.ideals.server.symbol;
 
+import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VirtualFile;
+import com.intellij.psi.PsiManager;
 import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SymbolKind;
@@ -11,7 +13,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.rri.ideals.server.LspLightBasePlatformTestCase;
-import org.rri.ideals.server.LspPath;
+import org.rri.ideals.server.TestUtil;
+import org.rri.ideals.server.commands.ExecutorContext;
 
 import java.lang.String;
 import java.nio.file.Paths;
@@ -202,10 +205,18 @@ public class DocumentSymbolServiceTest extends LspLightBasePlatformTestCase {
 
   private void checkDocumentSymbols(@NotNull List<@NotNull DocumentSymbol> answers, @Nullable VirtualFile virtualFile) {
     assertNotNull(virtualFile);
-    var service = getProject().getService(DocumentSymbolService.class);
-    var actual = service.computeDocumentSymbols(LspPath.fromVirtualFile(virtualFile), () -> {
-    }).stream().map(Either::getRight).toList();
-    assertEquals(answers, actual);
+    final var service = getProject().getService(DocumentSymbolService.class);
+    final var disposable = Disposer.newDisposable();
+    try {
+      final var psiFile = PsiManager.getInstance(getProject()).findFile(virtualFile);
+      assertNotNull(psiFile);
+      var actual = service.computeDocumentSymbols(
+              new ExecutorContext(psiFile, disposable, null, new TestUtil.DumbCancelChecker()))
+          .stream().map(Either::getRight).toList();
+      assertEquals(answers, actual);
+    } finally {
+      Disposer.dispose(disposable);
+    }
   }
 
   @NotNull

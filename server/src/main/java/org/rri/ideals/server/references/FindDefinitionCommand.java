@@ -3,7 +3,6 @@ package org.rri.ideals.server.references;
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.psi.PsiElement;
-import org.eclipse.lsp4j.Position;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.function.Supplier;
@@ -11,9 +10,6 @@ import java.util.stream.Stream;
 
 
 public class FindDefinitionCommand extends FindDefinitionCommandBase {
-  public FindDefinitionCommand(@NotNull Position pos) {
-    super(pos);
-  }
 
   @Override
   protected @NotNull Supplier<@NotNull String> getMessageSupplier() {

@@ -48,7 +48,7 @@ public class DefinitionFromLibrarySourcesTest extends LightJavaCodeInsightFixtur
           LspPath.fromLocalPath(
               Paths.get(getTestDataPath()).resolve("src/DefinitionFromJar.java"));
 
-      final var future = new FindDefinitionCommand(new Position(3, 8)).runAsync(getProject(), path);
+      final var future = new FindDefinitionCommand().runAsync(getProject(), path.toLspUri(), new Position(3, 8));
       var actual = TestUtil.getNonBlockingEdt(future, 5000);
 
       assertNotNull(actual);

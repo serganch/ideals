@@ -16,6 +16,8 @@ repositories {
 dependencies {
   implementation("org.eclipse.lsp4j:org.eclipse.lsp4j:0.17.0")
   implementation("io.github.furstenheim:copy_down:1.1")
+  testImplementation("org.junit.jupiter:junit-jupiter:5.8.2")
+  testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.8.2")
 }
 
 // Configure Gradle IntelliJ Plugin - read more: https://github.com/JetBrains/gradle-intellij-plugin
@@ -39,11 +41,6 @@ tasks.register<RunIdeTask>("plainIdea") {
 
 tasks {
   test {
-    dependencies {
-      testImplementation("org.junit.jupiter:junit-jupiter:5.8.2")
-      testRuntimeOnly("org.junit.vintage:junit-vintage-engine:5.8.2")
-    }
-
     jvmArgs = listOf(
       "--add-opens=java.base/java.lang=ALL-UNNAMED",
       "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",

@@ -1,5 +1,6 @@
 package org.rri.ideals.server;
 
+import com.google.gson.GsonBuilder;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.util.concurrency.AppExecutorUtil;
@@ -8,6 +9,7 @@ import org.eclipse.lsp4j.jsonrpc.CompletableFutures;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.eclipse.lsp4j.services.TextDocumentService;
 import org.jetbrains.annotations.NotNull;
+import org.rri.ideals.server.codeactions.ActionData;
 import org.rri.ideals.server.codeactions.CodeActionService;
 import org.rri.ideals.server.completions.CompletionService;
 import org.rri.ideals.server.diagnostics.DiagnosticsService;
@@ -17,12 +19,12 @@ import org.rri.ideals.server.references.*;
 import org.rri.ideals.server.rename.RenameCommand;
 import org.rri.ideals.server.signature.SignatureHelpService;
 import org.rri.ideals.server.symbol.DocumentSymbolService;
+import org.rri.ideals.server.util.AsyncExecutor;
 import org.rri.ideals.server.util.Metrics;
 
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
-import java.util.stream.Collectors;
 
 public class MyTextDocumentService implements TextDocumentService {
 
@@ -32,6 +34,7 @@ public class MyTextDocumentService implements TextDocumentService {
   public MyTextDocumentService(@NotNull LspSession session) {
     this.session = session;
   }
+
   @Override
   public void didOpen(DidOpenTextDocumentParams params) {
     final var textDocument = params.getTextDocument();
@@ -79,60 +82,69 @@ public class MyTextDocumentService implements TextDocumentService {
 
   @Override
   public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> definition(DefinitionParams params) {
-    return new FindDefinitionCommand(params.getPosition())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+    return new FindDefinitionCommand()
+        .runAsync(session.getProject(), params.getTextDocument(), params.getPosition());
   }
 
   @Override
   public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> typeDefinition(TypeDefinitionParams params) {
-    return new FindTypeDefinitionCommand(params.getPosition())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+    return new FindTypeDefinitionCommand()
+        .runAsync(session.getProject(), params.getTextDocument(), params.getPosition());
   }
 
   @Override
   public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>> implementation(ImplementationParams params) {
-    return new FindImplementationCommand(params.getPosition())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+    return new FindImplementationCommand()
+        .runAsync(session.getProject(), params.getTextDocument(), params.getPosition());
   }
 
   @Override
   public CompletableFuture<List<? extends Location>> references(ReferenceParams params) {
-    return new FindUsagesCommand(params.getPosition())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+    return new FindUsagesCommand()
+        .runAsync(session.getProject(), params.getTextDocument(), params.getPosition());
   }
 
   @Override
   public CompletableFuture<List<? extends DocumentHighlight>> documentHighlight(DocumentHighlightParams params) {
-    return new DocumentHighlightCommand(params.getPosition())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+    return new DocumentHighlightCommand()
+        .runAsync(session.getProject(), params.getTextDocument(), params.getPosition());
   }
 
   @SuppressWarnings("deprecation")
   @Override
   public CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> documentSymbol(DocumentSymbolParams params) {
-    final var path = LspPath.fromLspUri(params.getTextDocument().getUri());
-    return CompletableFutures.computeAsync(
-        AppExecutorUtil.getAppExecutorService(),
-        (cancelChecker) ->
-            documentSymbols().computeDocumentSymbols(path, cancelChecker)
-    );
+    final var client = AsyncExecutor.<List<Either<SymbolInformation, DocumentSymbol>>>builder()
+        .cancellable(true)
+        .executorContext(session.getProject(), params.getTextDocument().getUri(), null)
+        .build();
+
+    return client.compute((executorContext -> documentSymbols().computeDocumentSymbols(executorContext)));
   }
 
   @Override
   public CompletableFuture<List<Either<Command, CodeAction>>> codeAction(CodeActionParams params) {
-    return CompletableFuture.completedFuture(
-        codeActions().getCodeActions(
-            LspPath.fromLspUri(params.getTextDocument().getUri()),
-            params.getRange()
-        ).stream().map((Function<CodeAction, Either<Command, CodeAction>>) Either::forRight).collect(Collectors.toList())
+    final var client = AsyncExecutor.<List<Either<Command, CodeAction>>>builder()
+        .executorContext(session.getProject(), params.getTextDocument().getUri(), params.getRange().getStart())
+        .build();
+
+    return client.compute(executorContext ->
+        codeActions().getCodeActions(params.getRange(), executorContext).stream()
+            .map((Function<CodeAction, Either<Command, CodeAction>>) Either::forRight)
+            .toList()
     );
   }
 
 
   @Override
   public CompletableFuture<CodeAction> resolveCodeAction(CodeAction unresolved) {
-    return CompletableFuture.supplyAsync(() -> {
-      var edit = codeActions().applyCodeAction(unresolved);
+    final var actionData = new GsonBuilder().create()
+        .fromJson(unresolved.getData().toString(), ActionData.class);
+    final var client = AsyncExecutor.<CodeAction>builder()
+        .executorContext(session.getProject(), actionData.getUri(), actionData.getRange().getStart())
+        .build();
+
+    return client.compute(executorContext -> {
+      var edit = codeActions().applyCodeAction(actionData, unresolved.getTitle(), executorContext);
       unresolved.setEdit(edit);
       return unresolved;
     });
@@ -186,46 +198,48 @@ public class MyTextDocumentService implements TextDocumentService {
   @Override
   @NotNull
   public CompletableFuture<Either<List<CompletionItem>, CompletionList>> completion(@NotNull CompletionParams params) {
-    final var path = LspPath.fromLspUri(params.getTextDocument().getUri());
-    return CompletableFutures.computeAsync(
-        AppExecutorUtil.getAppExecutorService(),
-        (cancelChecker) ->
-            Either.forLeft(completions().computeCompletions(path, params.getPosition(), cancelChecker))
-    );
+    final var client = AsyncExecutor.<Either<List<CompletionItem>, CompletionList>>builder()
+        .cancellable(true)
+        .executorContext(session.getProject(), params.getTextDocument().getUri(), params.getPosition())
+        .build();
+
+    return client.compute((executorContext -> Either.forLeft(completions().computeCompletions(executorContext))));
   }
 
   @Override
   @NotNull
   public CompletableFuture<SignatureHelp> signatureHelp(SignatureHelpParams params) {
-    final var path = LspPath.fromLspUri(params.getTextDocument().getUri());
-    return CompletableFutures.computeAsync(AppExecutorUtil.getAppExecutorService(),
-        cancelChecker -> signature().computeSignatureHelp(path, params.getPosition(), cancelChecker));
+    final var client = AsyncExecutor.<SignatureHelp>builder()
+        .cancellable(true)
+        .executorContext(session.getProject(), params.getTextDocument().getUri(), params.getPosition())
+        .build();
+    final var signature = signature();
+
+    return client.compute((signature::computeSignatureHelp));
   }
 
 
   @Override
   public CompletableFuture<List<? extends TextEdit>> formatting(@NotNull DocumentFormattingParams params) {
     return new FormattingCommand(null, params.getOptions())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+        .runAsync(session.getProject(), params.getTextDocument());
   }
 
   @Override
   public CompletableFuture<List<? extends TextEdit>> rangeFormatting(@NotNull DocumentRangeFormattingParams params) {
     return new FormattingCommand(params.getRange(), params.getOptions())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+        .runAsync(session.getProject(), params.getTextDocument());
   }
 
   @Override
   public CompletableFuture<List<? extends TextEdit>> onTypeFormatting(DocumentOnTypeFormattingParams params) {
-    return new OnTypeFormattingCommand(params.getPosition(), params.getOptions(),
-        params.getCh().charAt(0)).runAsync(
-        session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri())
-    );
+    return new OnTypeFormattingCommand(params.getPosition(), params.getOptions(), params.getCh().charAt(0))
+        .runAsync(session.getProject(), params.getTextDocument());
   }
 
   @Override
   public CompletableFuture<WorkspaceEdit> rename(RenameParams params) {
-    return new RenameCommand(params.getPosition(), params.getNewName())
-        .runAsync(session.getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+    return new RenameCommand(params.getNewName())
+        .runAsync(session.getProject(), params.getTextDocument(), params.getPosition());
   }
 }

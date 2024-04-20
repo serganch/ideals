@@ -7,7 +7,10 @@ import com.intellij.openapi.editor.impl.DocumentImpl;
 import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.fileEditor.impl.FileDocumentManagerImpl;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.*;
+import com.intellij.openapi.util.Computable;
+import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.Segment;
+import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiManager;
@@ -22,6 +25,7 @@ import org.rri.ideals.server.LspPath;
 
 import java.util.Arrays;
 import java.util.concurrent.Callable;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
@@ -87,6 +91,16 @@ public class MiscUtil {
           block.accept(psiFile);
           return null;
         });
+  }
+
+  public static <T> T computeInEDTAndWait(@NotNull Supplier<T> action) {
+    final var ref = new AtomicReference<T>();
+
+    ApplicationManager.getApplication().invokeAndWait(() -> {
+      ref.set(action.get());
+    });
+
+    return ref.get();
   }
 
   @Nullable

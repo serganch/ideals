@@ -22,11 +22,10 @@ import org.eclipse.lsp4j.DocumentSymbol;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.SymbolInformation;
 import org.eclipse.lsp4j.SymbolKind;
-import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.rri.ideals.server.LspPath;
+import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.symbol.util.SymbolUtil;
 import org.rri.ideals.server.util.LspProgressIndicator;
 import org.rri.ideals.server.util.MiscUtil;
@@ -48,35 +47,27 @@ final public class DocumentSymbolService {
 
   @SuppressWarnings("deprecation")
   public @NotNull List<Either<SymbolInformation, DocumentSymbol>> computeDocumentSymbols(
-      @NotNull LspPath path,
-      @NotNull CancelChecker cancelChecker) {
+      @NotNull ExecutorContext executorContext) {
     LOG.info("document symbol start");
-    final var psiFile = MiscUtil.resolvePsiFile(project, path);
-    if (psiFile == null) {
-      return List.of();
-    }
-    var disposable = Disposer.newDisposable();
-    try {
-      return ProgressManager.getInstance().runProcess(() -> {
+    final var psiFile = executorContext.getPsiFile();
+    final var cancelChecker = executorContext.getCancelToken();
+    assert cancelChecker != null;
+    return ProgressManager.getInstance().runProcess(() -> {
 
-        StructureViewTreeElement root = getViewTreeElement(psiFile, disposable);
-        if (root == null) {
-          return List.of();
-        }
-        Document document = ReadAction.compute(() -> MiscUtil.getDocument(psiFile));
-        assert document != null;
+      StructureViewTreeElement root = getViewTreeElement(psiFile, executorContext.getDisposable());
+      if (root == null) {
+        return List.of();
+      }
+      Document document = ReadAction.compute(() -> MiscUtil.getDocument(psiFile));
+      assert document != null;
 
-        var rootSymbol = processTree(root, psiFile, document);
-        if (rootSymbol == null) {
-          return List.of();
-        }
-        rootSymbol.setKind(SymbolKind.File);
-        return List.of(Either.forRight(rootSymbol));
-      }, new LspProgressIndicator(cancelChecker));
-    } finally {
-      WriteCommandAction.runWriteCommandAction(project, null, null,
-          () -> Disposer.dispose(disposable), psiFile);
-    }
+      var rootSymbol = processTree(root, psiFile, document);
+      if (rootSymbol == null) {
+        return List.of();
+      }
+      rootSymbol.setKind(SymbolKind.File);
+      return List.of(Either.forRight(rootSymbol));
+    }, new LspProgressIndicator(cancelChecker));
   }
 
   @Nullable

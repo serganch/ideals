@@ -61,6 +61,8 @@ public class EditorUtil {
       return callback.apply(editor);
     } catch (Exception e) {
       throw MiscUtil.wrap(e);
+    } finally {
+      Disposer.dispose(context);
     }
   }
 

@@ -1,19 +1,14 @@
 package org.rri.ideals.server.commands;
 
-import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.project.Project;
-import com.intellij.util.concurrency.AppExecutorUtil;
-import org.eclipse.lsp4j.jsonrpc.CancelChecker;
-import org.eclipse.lsp4j.jsonrpc.CompletableFutures;
+import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.TextDocumentIdentifier;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
-import org.rri.ideals.server.LspPath;
-import org.rri.ideals.server.util.MiscUtil;
+import org.rri.ideals.server.util.AsyncExecutor;
 
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Executor;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Supplier;
 
 public abstract class LspCommand<R> {
@@ -26,34 +21,22 @@ public abstract class LspCommand<R> {
 
   protected abstract R execute(@NotNull ExecutorContext ctx);
 
-  public @NotNull CompletableFuture<@Nullable R> runAsync(@NotNull Project project, @NotNull LspPath path) {
-    final var virtualFile = path.findVirtualFile();
-    if (virtualFile == null) {
-      LOG.info("File not found: " + path);
-      // todo mb need to throw excep
-      return CompletableFuture.completedFuture(null);
-    }
-
-    LOG.info(getMessageSupplier().get());
-    Executor executor = AppExecutorUtil.getAppExecutorService();
-    if (isCancellable()) {
-      return CompletableFutures.computeAsync(executor, cancelToken -> getResult(path, project, cancelToken));
-    } else {
-      return CompletableFuture.supplyAsync(() -> getResult(path, project, null), executor);
-    }
+  public @NotNull CompletableFuture<@Nullable R> runAsync(@NotNull Project project, @NotNull TextDocumentIdentifier textDocumentIdentifier) {
+    return runAsync(project, textDocumentIdentifier.getUri(), null);
   }
 
-  private @Nullable R getResult(@NotNull LspPath path,
-                                @NotNull Project project,
-                                @Nullable CancelChecker cancelToken) {
-    final AtomicReference<R> ref = new AtomicReference<>();
-    ApplicationManager.getApplication()
-        .invokeAndWait(
-            () -> ref.set(MiscUtil.produceWithPsiFileInReadAction(
-                project,
-                path,
-                (psiFile) -> execute(new ExecutorContext(psiFile, project, cancelToken))
-            )));
-    return ref.get();
+  public @NotNull CompletableFuture<@Nullable R> runAsync(@NotNull Project project, @NotNull TextDocumentIdentifier textDocumentIdentifier, @Nullable Position position) {
+    return runAsync(project, textDocumentIdentifier.getUri(), position);
+  }
+
+  public @NotNull CompletableFuture<@Nullable R> runAsync(@NotNull Project project, @NotNull String uri, @Nullable Position position) {
+    LOG.info(getMessageSupplier().get());
+    var client = AsyncExecutor.<R>builder()
+        .executorContext(project, uri, position)
+        .cancellable(isCancellable())
+        .runInEDT(true)
+        .build();
+
+    return client.compute(this::execute);
   }
 }
