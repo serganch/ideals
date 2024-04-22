@@ -14,7 +14,6 @@ import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.IndexNotReadyException;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.TextRange;
 import com.intellij.psi.PsiElement;
@@ -28,7 +27,6 @@ import com.intellij.usages.UsageTargetUtil;
 import com.intellij.util.containers.ContainerUtil;
 import org.eclipse.lsp4j.DocumentHighlight;
 import org.eclipse.lsp4j.DocumentHighlightKind;
-import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -43,12 +41,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class DocumentHighlightCommand extends LspCommand<List<? extends DocumentHighlight>> {
-  @NotNull
-  private final Position pos;
-
-  public DocumentHighlightCommand(@NotNull Position pos) {
-    this.pos = pos;
-  }
 
   @Override
   protected @NotNull Supplier<@NotNull String> getMessageSupplier() {
@@ -62,17 +54,13 @@ public class DocumentHighlightCommand extends LspCommand<List<? extends Document
 
   @Override
   protected @NotNull List<? extends DocumentHighlight> execute(@NotNull ExecutorContext ctx) {
-    var disposable = Disposer.newDisposable();
+    final var editor = ctx.getEditor();
+    assert editor != null;
+
     try {
-      return EditorUtil.computeWithEditor(disposable, ctx.getPsiFile(), pos, editor -> {
-        try {
-          return findHighlights(ctx.getProject(), editor, ctx.getPsiFile());
-        } catch (IndexNotReadyException e) {
-          return List.of();
-        }
-      });
-    } finally {
-      Disposer.dispose(disposable);
+      return findHighlights(ctx.getPsiFile().getProject(), editor, ctx.getPsiFile());
+    } catch (IndexNotReadyException e) {
+      return List.of();
     }
   }
 

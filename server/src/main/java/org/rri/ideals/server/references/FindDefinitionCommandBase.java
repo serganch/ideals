@@ -11,10 +11,8 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiFile;
 import org.eclipse.lsp4j.Location;
 import org.eclipse.lsp4j.LocationLink;
-import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.jetbrains.annotations.NotNull;
@@ -22,7 +20,6 @@ import org.jetbrains.annotations.Nullable;
 import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.commands.LspCommand;
-import org.rri.ideals.server.util.EditorUtil;
 import org.rri.ideals.server.util.MiscUtil;
 
 import java.util.List;
@@ -34,13 +31,6 @@ abstract class FindDefinitionCommandBase extends LspCommand<Either<List<? extend
   private static final ExtensionPointName<EditorFileSwapper> EDITOR_FILE_SWAPPER_EP_NAME =
       new ExtensionPointName<>("com.intellij.editorFileSwapper");
 
-  @NotNull
-  protected final Position pos;
-
-  protected FindDefinitionCommandBase(@NotNull Position pos) {
-    this.pos = pos;
-  }
-
   @Override
   protected boolean isCancellable() {
     return false;
@@ -48,39 +38,34 @@ abstract class FindDefinitionCommandBase extends LspCommand<Either<List<? extend
 
   @Override
   protected @NotNull Either<List<? extends Location>, @NotNull List<? extends LocationLink>> execute(@NotNull ExecutorContext ctx) {
-    PsiFile file = ctx.getPsiFile();
-    Document doc = MiscUtil.getDocument(file);
-    if (doc == null) {
-      return Either.forRight(List.of());
-    }
-
-    var offset = MiscUtil.positionToOffset(doc, pos);
+    final var editor = ctx.getEditor();
+    assert editor != null;
+    final var file = ctx.getPsiFile();
+    final var doc = editor.getDocument();
+    final var offset = editor.getCaretModel().getOffset();
+    
     PsiElement originalElem = file.findElementAt(offset);
     Range originalRange = MiscUtil.getPsiElementRange(doc, originalElem);
 
-    var disposable = Disposer.newDisposable();
-    try {
-      var definitions = EditorUtil.computeWithEditor(disposable, file, pos,
-          editor -> findDefinitions(editor, offset))
-          .filter(Objects::nonNull)
-          .map(targetElem -> {
-            if (targetElem.getContainingFile() == null) { return null; }
-            final var loc = findSourceLocation(ctx.getProject(), targetElem);
-            if (loc != null) {
-              return new LocationLink(loc.getUri(), loc.getRange(), loc.getRange(), originalRange);
-            } else {
-              Document targetDoc = targetElem.getContainingFile().equals(file)
-                  ? doc : MiscUtil.getDocument(targetElem.getContainingFile());
-              return MiscUtil.psiElementToLocationLink(targetElem, targetDoc, originalRange);
-            }
-          })
-          .filter(Objects::nonNull)
-          .collect(Collectors.toList());
+    var definitions = findDefinitions(editor, offset)
+        .filter(Objects::nonNull)
+        .map(targetElem -> {
+          if (targetElem.getContainingFile() == null) {
+            return null;
+          }
+          final var loc = findSourceLocation(file.getProject(), targetElem);
+          if (loc != null) {
+            return new LocationLink(loc.getUri(), loc.getRange(), loc.getRange(), originalRange);
+          } else {
+            Document targetDoc = targetElem.getContainingFile().equals(file)
+                ? doc : MiscUtil.getDocument(targetElem.getContainingFile());
+            return MiscUtil.psiElementToLocationLink(targetElem, targetDoc, originalRange);
+          }
+        })
+        .filter(Objects::nonNull)
+        .collect(Collectors.toList());
 
-      return Either.forRight(definitions);
-    } finally {
-      Disposer.dispose(disposable);
-    }
+    return Either.forRight(definitions);
   }
 
   /**

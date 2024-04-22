@@ -1,5 +1,6 @@
 package org.rri.ideals.server.references;
 
+import org.eclipse.lsp4j.TextDocumentPositionParams;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.rri.ideals.server.LspLightBasePlatformTestCase;
@@ -10,7 +11,7 @@ import org.rri.ideals.server.generator.TestGenerator;
 import java.nio.file.Paths;
 
 public abstract class ReferencesCommandTestBase<E extends TestGenerator<?
-    extends TestGenerator.Test>> extends LspLightBasePlatformTestCase {
+    extends TestGenerator.Test>, T extends TextDocumentPositionParams> extends LspLightBasePlatformTestCase {
   @Override
   protected String getTestDataPath() {
     return Paths.get("test-data/references").toAbsolutePath().toString();
@@ -18,7 +19,7 @@ public abstract class ReferencesCommandTestBase<E extends TestGenerator<?
 
   protected abstract @NotNull E getGenerator(@NotNull final TestEngine engine);
 
-  protected abstract @Nullable Object getActuals(@NotNull final Object params);
+  protected abstract @Nullable Object getActuals(@NotNull final T params);
 
   protected void checkReferencesByDirectory(@NotNull String testProjectRelativePath) {
       final var engine = new TestEngine(new IdeaTestFixture(myFixture));
@@ -29,7 +30,7 @@ public abstract class ReferencesCommandTestBase<E extends TestGenerator<?
         final var params = test.params();
         final var expected = test.expected();
 
-        final var actual = getActuals(params);
+        final var actual = getActuals((T) params);
 
         assertEquals(expected, actual);
       }

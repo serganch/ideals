@@ -2,7 +2,6 @@ package org.rri.ideals.server.rename;
 
 import com.intellij.codeInsight.TargetElementUtil;
 import com.intellij.openapi.editor.Document;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Pair;
 import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.util.Segment;
@@ -17,7 +16,6 @@ import org.jetbrains.annotations.Nullable;
 import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.commands.LspCommand;
-import org.rri.ideals.server.util.EditorUtil;
 import org.rri.ideals.server.util.MiscUtil;
 
 import java.util.*;
@@ -26,11 +24,9 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 public class RenameCommand extends LspCommand<WorkspaceEdit> {
-  private final Position pos;
   private final String newName;
 
-  public RenameCommand(Position pos, String newName) {
-    this.pos = pos;
+  public RenameCommand(String newName) {
     this.newName = newName;
   }
 
@@ -47,27 +43,22 @@ public class RenameCommand extends LspCommand<WorkspaceEdit> {
   @Override
   protected @Nullable WorkspaceEdit execute(@NotNull ExecutorContext ctx) {
     final var file = ctx.getPsiFile();
+    final var editor = ctx.getEditor();
+    assert editor != null;
     Document doc = MiscUtil.getDocument(file);
     if (doc == null) {
       return null;
     }
     var elementRef = new Ref<PsiElement>();
-    final var disposable = Disposer.newDisposable();
-    try {
-      EditorUtil.withEditor(disposable, file, pos, editor -> {
-        var elementToRename = TargetElementUtil.findTargetElement(editor, TargetElementUtil.getInstance().getAllAccepted());
-        if (elementToRename != null) {
-          final var processor = RenamePsiElementProcessor.forElement(elementToRename);
-          final var newElementToRename = processor.substituteElementToRename(elementToRename, editor);
-          if (newElementToRename != null) {
-            elementToRename = newElementToRename;
-          }
-        }
-        elementRef.set(elementToRename);
-      });
-    } finally {
-      Disposer.dispose(disposable);
+    var elementToRename = TargetElementUtil.findTargetElement(editor, TargetElementUtil.getInstance().getAllAccepted());
+    if (elementToRename != null) {
+      final var processor = RenamePsiElementProcessor.forElement(elementToRename);
+      final var newElementToRename = processor.substituteElementToRename(elementToRename, editor);
+      if (newElementToRename != null) {
+        elementToRename = newElementToRename;
+      }
     }
+    elementRef.set(elementToRename);
 
     if (elementRef.get() == null) {
       return null;
@@ -75,7 +66,7 @@ public class RenameCommand extends LspCommand<WorkspaceEdit> {
 
     final var elemToName = new LinkedHashMap<PsiElement, String>();
     elemToName.put(elementRef.get(), newName);
-    final var renamer = new RenameProcessor(ctx.getProject(), elementRef.get(), newName, false, false);
+    final var renamer = new RenameProcessor(file.getProject(), elementRef.get(), newName, false, false);
     renamer.prepareRenaming(elementRef.get(), newName, elemToName);
     elemToName.forEach(renamer::addElement);
 

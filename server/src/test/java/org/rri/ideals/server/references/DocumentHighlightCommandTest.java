@@ -3,6 +3,7 @@ package org.rri.ideals.server.references;
 import org.eclipse.lsp4j.DocumentHighlight;
 import org.eclipse.lsp4j.DocumentHighlightKind;
 import org.eclipse.lsp4j.Position;
+import org.eclipse.lsp4j.TextDocumentPositionParams;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.junit.Test;
@@ -72,7 +73,7 @@ public class DocumentHighlightCommandTest extends ReferencesCommandTestBase {
   private void checkHighlight(@NotNull Set<@NotNull DocumentHighlight> answers,
                                 @NotNull Position pos,
                                 @NotNull LspPath path) {
-    final var future = new DocumentHighlightCommand(pos).runAsync(getProject(), path);
+    final var future = new DocumentHighlightCommand().runAsync(getProject(), path.toLspUri(), pos);
     final var lst = TestUtil.getNonBlockingEdt(future, 50000);
     assertNotNull(lst);
     assertEquals(answers, new HashSet<>(lst));
@@ -87,7 +88,7 @@ public class DocumentHighlightCommandTest extends ReferencesCommandTestBase {
   }
 
   @Override
-  protected @Nullable Object getActuals(@NotNull Object params) {
+  protected @Nullable Object getActuals(@NotNull TextDocumentPositionParams params) {
     return null;
   }
 }

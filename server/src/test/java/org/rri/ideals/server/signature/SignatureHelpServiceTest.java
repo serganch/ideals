@@ -3,6 +3,7 @@ package org.rri.ideals.server.signature;
 import com.intellij.codeInsight.hint.ParameterInfoListener;
 import com.intellij.ide.highlighter.JavaFileType;
 import com.intellij.openapi.fileTypes.LanguageFileType;
+import com.intellij.openapi.util.Disposer;
 import com.jetbrains.python.PythonFileType;
 import org.eclipse.lsp4j.ParameterInformation;
 import org.eclipse.lsp4j.Position;
@@ -15,8 +16,9 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.rri.ideals.server.LspLightBasePlatformTestCase;
-import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
+import org.rri.ideals.server.commands.ExecutorContext;
+import org.rri.ideals.server.util.EditorUtil;
 
 import java.util.List;
 
@@ -196,15 +198,17 @@ public class SignatureHelpServiceTest extends LspLightBasePlatformTestCase {
                                  @NotNull CancelChecker cancelChecker,
                                  @NotNull List<SignatureInformation> expected) {
     final var file = myFixture.configureByText(fileType, text);
-    var signatureHelpService = getProject().getService(SignatureHelpService.class);
+    final var signatureHelpService = getProject().getService(SignatureHelpService.class);
     signatureHelpService.setEdtFlushRunnable(defaultFlushRunnable());
+    final var disposable = Disposer.newDisposable();
 
-    var signatureHelp =
-        signatureHelpService.computeSignatureHelp(
-            LspPath.fromVirtualFile(file.getVirtualFile()), pos, cancelChecker);
-    assertNotNull(signatureHelp);
-    assertEquals(activeSignature, signatureHelp.getActiveSignature());
-    assertEquals(expected, signatureHelp.getSignatures());
+    EditorUtil.withEditor(disposable, file, pos, editor -> {
+      var signatureHelp =
+          signatureHelpService.computeSignatureHelp(new ExecutorContext(file, disposable, editor, cancelChecker));
+      assertNotNull(signatureHelp);
+      assertEquals(activeSignature, signatureHelp.getActiveSignature());
+      assertEquals(expected, signatureHelp.getSignatures());
+    });
   }
 
   @NotNull

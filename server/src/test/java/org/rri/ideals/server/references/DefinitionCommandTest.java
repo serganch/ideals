@@ -7,7 +7,6 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.engine.TestEngine;
 import org.rri.ideals.server.generator.IdeaOffsetPositionConverter;
@@ -18,7 +17,7 @@ import java.util.Set;
 
 
 @RunWith(JUnit4.class)
-public class DefinitionCommandTest extends ReferencesCommandTestBase<DefinitionTestGenerator> {
+public class DefinitionCommandTest extends ReferencesCommandTestBase<DefinitionTestGenerator, DefinitionParams> {
   @Test
   public void definitionJavaTest() {
     checkReferencesByDirectory("java/project-definition");
@@ -37,10 +36,8 @@ public class DefinitionCommandTest extends ReferencesCommandTestBase<DefinitionT
 
   @Override
   @Nullable
-  protected Set<? extends LocationLink> getActuals(@NotNull Object params) {
-    final DefinitionParams defParams = (DefinitionParams) params;
-    final var path = LspPath.fromLspUri(defParams.getTextDocument().getUri());
-    final var future = new FindDefinitionCommand(defParams.getPosition()).runAsync(getProject(), path);
+  protected Set<? extends LocationLink> getActuals(@NotNull DefinitionParams params) {
+    final var future = new FindDefinitionCommand().runAsync(getProject(), params.getTextDocument(), params.getPosition());
     var actual = TestUtil.getNonBlockingEdt(future, 50000);
     if (actual == null) {
       return null;

@@ -1,6 +1,5 @@
 package org.rri.ideals.server.codeactions;
 
-import com.google.gson.GsonBuilder;
 import com.intellij.codeInsight.daemon.impl.HighlightInfo;
 import com.intellij.codeInsight.daemon.impl.ShowIntentionsPass;
 import com.intellij.openapi.application.ApplicationManager;
@@ -10,9 +9,7 @@ import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.components.Service;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.util.Ref;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
@@ -22,8 +19,8 @@ import org.eclipse.lsp4j.Range;
 import org.eclipse.lsp4j.WorkspaceEdit;
 import org.jetbrains.annotations.NotNull;
 import org.rri.ideals.server.LspPath;
+import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.diagnostics.DiagnosticsService;
-import org.rri.ideals.server.util.EditorUtil;
 import org.rri.ideals.server.util.MiscUtil;
 import org.rri.ideals.server.util.TextUtil;
 
@@ -61,113 +58,88 @@ public final class CodeActionService {
   }
 
   @NotNull
-  public List<CodeAction> getCodeActions(@NotNull LspPath path, @NotNull Range range) {
+  public List<CodeAction> getCodeActions(@NotNull Range range, @NotNull ExecutorContext executorContext) {
 
-    var result = new Ref<List<CodeAction>>();
-    ApplicationManager.getApplication().invokeAndWait(
-        () -> MiscUtil.invokeWithPsiFileInReadAction(project, path, (file) -> {
-          final var disposable = Disposer.newDisposable();
+    final var result = new Ref<List<CodeAction>>();
+    final var file = executorContext.getPsiFile();
+    final var path = LspPath.fromVirtualFile(file.getVirtualFile());
+    final var editor = executorContext.getEditor();
+    assert editor != null;
 
-          try {
-            EditorUtil.withEditor(disposable, file, range.getStart(), (editor) -> {
-              final var actionInfo = ShowIntentionsPass.getActionsToShow(editor, file, true);
+    final var actionInfo = MiscUtil.computeInEDTAndWait(() ->
+        ShowIntentionsPass.getActionsToShow(editor, file, true)
+    );
 
-              final var quickFixes = diagnostics().getQuickFixes(path, range).stream()
-                  .map(it -> toCodeAction(path, range, it, CodeActionKind.QuickFix));
+    final var quickFixes = diagnostics().getQuickFixes(path, range).stream()
+        .map(it -> toCodeAction(path, range, it, CodeActionKind.QuickFix));
 
-              final var intentionActions = Stream.of(
-                      actionInfo.errorFixesToShow,
-                      actionInfo.inspectionFixesToShow,
-                      actionInfo.intentionsToShow)
-                  .flatMap(Collection::stream)
-                  .map(it -> toCodeAction(path, range, it, CodeActionKind.Refactor));
+    final var intentionActions = Stream.of(
+            actionInfo.errorFixesToShow,
+            actionInfo.inspectionFixesToShow,
+            actionInfo.intentionsToShow)
+        .flatMap(Collection::stream)
+        .map(it -> toCodeAction(path, range, it, CodeActionKind.Refactor));
 
-              final var actions = Stream.concat(quickFixes, intentionActions)
-                  .filter(distinctByKey(CodeAction::getTitle))
-                  .collect(Collectors.toList());
+    final var actions = Stream.concat(quickFixes, intentionActions)
+        .filter(distinctByKey(CodeAction::getTitle))
+        .collect(Collectors.toList());
 
-              result.set(actions);
-            });
-          } finally {
-            Disposer.dispose(disposable);
-          }
-        }));
+    result.set(actions);
 
     return Optional.ofNullable(result.get()).orElse(Collections.emptyList());
   }
 
   @NotNull
-  public WorkspaceEdit applyCodeAction(@NotNull CodeAction codeAction) {
-    final var actionData = new GsonBuilder().create()
-        .fromJson(codeAction.getData().toString(), ActionData.class);
-
-    final var path = LspPath.fromLspUri(actionData.getUri());
+  public WorkspaceEdit applyCodeAction(@NotNull ActionData actionData, String title, ExecutorContext executorContext) {
     final var result = new WorkspaceEdit();
+    final var editor = executorContext.getEditor();
+    assert editor != null;
+    final var psiFile = executorContext.getPsiFile();
+    final var path = LspPath.fromVirtualFile(psiFile.getVirtualFile());
+    final var oldCopy = ((PsiFile) psiFile.copy());
 
-    var disposable = Disposer.newDisposable();
+    ApplicationManager.getApplication().invokeAndWait(() -> {
+      final var quickFixes = diagnostics().getQuickFixes(path, actionData.getRange());
+      final var actionInfo = ShowIntentionsPass.getActionsToShow(editor, psiFile, true);
 
-    try {
-      final var psiFile = MiscUtil.resolvePsiFile(project, path);
+      var actionFound = Stream.of(
+              quickFixes,
+              actionInfo.errorFixesToShow,
+              actionInfo.inspectionFixesToShow,
+              actionInfo.intentionsToShow)
+          .flatMap(Collection::stream)
+          .map(HighlightInfo.IntentionActionDescriptor::getAction)
+          .filter(it -> it.getText().equals(title))
+          .findFirst()
+          .orElse(null);
 
-      if (psiFile == null) {
-        LOG.error("couldn't find PSI file: " + path);
-        return result;
+      if (actionFound == null) {
+        LOG.warn("No action descriptor found: " + title);
+        return;
       }
 
-      final var oldCopy = ((PsiFile) psiFile.copy());
-
-      ApplicationManager.getApplication().invokeAndWait(() -> {
-        final var editor = EditorUtil.createEditor(disposable, psiFile, actionData.getRange().getStart());
-
-        final var quickFixes = diagnostics().getQuickFixes(path, actionData.getRange());
-        final var actionInfo = ShowIntentionsPass.getActionsToShow(editor, psiFile, true);
-
-        var actionFound = Stream.of(
-                quickFixes,
-                actionInfo.errorFixesToShow,
-                actionInfo.inspectionFixesToShow,
-                actionInfo.intentionsToShow)
-            .flatMap(Collection::stream)
-            .map(HighlightInfo.IntentionActionDescriptor::getAction)
-            .filter(it -> it.getText().equals(codeAction.getTitle()))
-            .findFirst()
-            .orElse(null);
-
-        if (actionFound == null) {
-          LOG.warn("No action descriptor found: " + codeAction.getTitle());
-          return;
+      CommandProcessor.getInstance().executeCommand(project, () -> {
+        if (actionFound.startInWriteAction()) {
+          WriteAction.run(() -> actionFound.invoke(project, editor, psiFile));
+        } else {
+          actionFound.invoke(project, editor, psiFile);
         }
+      }, title, null);
+    });
 
-        CommandProcessor.getInstance().executeCommand(project, () -> {
-          if (actionFound.startInWriteAction()) {
-            WriteAction.run(() -> actionFound.invoke(project, editor, psiFile));
-          } else {
-            actionFound.invoke(project, editor, psiFile);
-          }
-        }, codeAction.getTitle(), null);
-      });
+    final var oldDoc = ReadAction.compute(() -> MiscUtil.getDocument(oldCopy));
+    final var newDoc = editor.getDocument();
 
-      final var oldDoc = new Ref<Document>();
-      final var newDoc = new Ref<Document>();
+    final var edits = TextUtil.textEditFromDocs(oldDoc, newDoc);
 
-      ReadAction.run(() -> {
-        oldDoc.set(Objects.requireNonNull(MiscUtil.getDocument(oldCopy)));
-        newDoc.set(Objects.requireNonNull(MiscUtil.getDocument(psiFile)));
-      });
+    WriteCommandAction.runWriteCommandAction(project, () -> {
+      newDoc.setText(oldDoc.getText());
+      PsiDocumentManager.getInstance(project).commitDocument(newDoc);
+    });
 
-      final var edits = TextUtil.textEditFromDocs(oldDoc.get(), newDoc.get());
-
-      WriteCommandAction.runWriteCommandAction(project, () -> {
-        newDoc.get().setText(oldDoc.get().getText());
-        PsiDocumentManager.getInstance(project).commitDocument(newDoc.get());
-      });
-
-      if (!edits.isEmpty()) {
-        diagnostics().haltDiagnostics(path);  // all cached quick fixes are no longer valid
-        result.setChanges(Map.of(actionData.getUri(), edits));
-      }
-    } finally {
-      ApplicationManager.getApplication().invokeAndWait(() -> Disposer.dispose(disposable));
+    if (!edits.isEmpty()) {
+      diagnostics().haltDiagnostics(path);  // all cached quick fixes are no longer valid
+      result.setChanges(Map.of(actionData.getUri(), edits));
     }
 
     diagnostics().launchDiagnostics(path);

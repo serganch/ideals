@@ -1,6 +1,7 @@
 package org.rri.ideals.server.commands;
 
-import com.intellij.openapi.project.Project;
+import com.intellij.openapi.Disposable;
+import com.intellij.openapi.editor.Editor;
 import com.intellij.psi.PsiFile;
 import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 import org.jetbrains.annotations.NotNull;
@@ -11,13 +12,16 @@ final public class ExecutorContext {
   @NotNull
   private final PsiFile file;
   @NotNull
-  private final Project project;
+  private final Disposable disposable;
   @Nullable
   private final CancelChecker cancelToken;
+  @Nullable
+  private final Editor editor;
 
-  public ExecutorContext(@NotNull PsiFile file, @NotNull Project project, @Nullable CancelChecker cancelToken) {
+  public ExecutorContext(@NotNull PsiFile file, @NotNull Disposable disposable, @Nullable Editor editor, @Nullable CancelChecker cancelToken) {
     this.file = file;
-    this.project = project;
+    this.editor = editor;
+    this.disposable = disposable;
     this.cancelToken = cancelToken;
   }
 
@@ -25,11 +29,15 @@ final public class ExecutorContext {
     return file;
   }
 
-  public @NotNull Project getProject() {
-    return project;
-  }
-
   public @Nullable CancelChecker getCancelToken() {
     return cancelToken;
+  }
+
+  public @Nullable Editor getEditor() {
+    return editor;
+  }
+
+  public @NotNull Disposable getDisposable() {
+    return disposable;
   }
 }

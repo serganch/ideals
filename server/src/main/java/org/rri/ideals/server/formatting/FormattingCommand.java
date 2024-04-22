@@ -52,7 +52,7 @@ final public class FormattingCommand extends FormattingCommandBase {
     CommandProcessor
         .getInstance()
         .executeCommand(
-            context.getProject(),
+            psiFile.getProject(),
             () -> doWithTemporaryCodeStyleSettingsForFile(
                 psiFile,
                 () -> doReformat(psiFile, getConfiguredTextRange(psiFile))),

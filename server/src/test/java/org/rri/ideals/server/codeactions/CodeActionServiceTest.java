@@ -1,8 +1,6 @@
 package org.rri.ideals.server.codeactions;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonObject;
+import com.intellij.openapi.util.Disposer;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiManager;
 import org.eclipse.lsp4j.CodeAction;
@@ -13,7 +11,9 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
+import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.diagnostics.DiagnosticsTestBase;
+import org.rri.ideals.server.util.EditorUtil;
 
 import java.util.stream.Stream;
 
@@ -46,23 +46,24 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
 
     final var file = myFixture.configureByText("test.java", text);
     final var orExpressionRange = TestUtil.newRange(2, 8, 2, 8);
-
-    var path = LspPath.fromVirtualFile(file.getVirtualFile());
-
     final var codeActionService = getProject().getService(CodeActionService.class);
+    final var disposable = Disposer.newDisposable();
 
-    final var codeActionsBeforeDiagnostic = codeActionService.getCodeActions(path, orExpressionRange);
+    EditorUtil.withEditor(disposable, file, orExpressionRange.getStart(), editor -> {
+      final var executorContext = new ExecutorContext(file, disposable, editor, null);
+      final var codeActionsBeforeDiagnostic = codeActionService.getCodeActions(orExpressionRange, executorContext);
 
-    Assert.assertTrue(codeActionsBeforeDiagnostic.stream().allMatch(it -> it.getKind().equals(CodeActionKind.Refactor)));
-    Assert.assertEquals(expectedIntentions, codeActionsBeforeDiagnostic.stream().map(CodeAction::getTitle).sorted().toList());
+      Assert.assertTrue(codeActionsBeforeDiagnostic.stream().allMatch(it -> it.getKind().equals(CodeActionKind.Refactor)));
+      Assert.assertEquals(expectedIntentions, codeActionsBeforeDiagnostic.stream().map(CodeAction::getTitle).sorted().toList());
 
-    runAndGetDiagnostics(file);
+      runAndGetDiagnostics(file);
 
-    final var quickFixes = codeActionService.getCodeActions(path, orExpressionRange);
-    quickFixes.removeAll(codeActionsBeforeDiagnostic);
+      final var quickFixes = codeActionService.getCodeActions(orExpressionRange, executorContext);
+      quickFixes.removeAll(codeActionsBeforeDiagnostic);
 
-    Assert.assertTrue(quickFixes.stream().allMatch(it -> it.getKind().equals(CodeActionKind.QuickFix)));
-    Assert.assertEquals(expectedQuickFixes, quickFixes.stream().map(CodeAction::getTitle).sorted().toList());
+      Assert.assertTrue(quickFixes.stream().allMatch(it -> it.getKind().equals(CodeActionKind.QuickFix)));
+      Assert.assertEquals(expectedQuickFixes, quickFixes.stream().map(CodeAction::getTitle).sorted().toList());
+    });
   }
 
 
@@ -82,30 +83,27 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
 
     final var actionTitle = "Change field 'x' type to 'String'";
 
-
     final var file = myFixture.configureByText("test.java", before);
-
     final var xVariableRange = TestUtil.newRange(1, 13, 1, 13);
-
     var path = LspPath.fromVirtualFile(file.getVirtualFile());
-
     final var codeActionService = getProject().getService(CodeActionService.class);
+    final var disposable = Disposer.newDisposable();
 
-    runAndGetDiagnostics(file);
+    EditorUtil.withEditor(disposable, file, xVariableRange.getStart(), editor -> {
+      final var executorContext = new ExecutorContext(file, disposable, editor, null);
 
-    final var codeActions = codeActionService.getCodeActions(path, xVariableRange);
+      runAndGetDiagnostics(file);
 
-    var action = codeActions.stream()
-        .filter(it -> it.getTitle().equals(actionTitle))
-        .findFirst()
-        .orElseThrow(() -> new AssertionError("action not found"));
+      final var codeActions = codeActionService.getCodeActions(xVariableRange, executorContext);
 
-    Gson gson = new GsonBuilder().create();
-    action.setData(gson.fromJson(gson.toJson(action.getData()), JsonObject.class));
+      var action = codeActions.stream()
+          .filter(it -> it.getTitle().equals(actionTitle))
+          .findFirst()
+          .orElseThrow(() -> new AssertionError("action not found"));
 
-    final var edit = codeActionService.applyCodeAction(action);
-
-    Assert.assertEquals(after, TestUtil.applyEdits(file.getText(), edit.getChanges().get(path.toLspUri())));
+      final var edit = codeActionService.applyCodeAction((ActionData) action.getData(), actionTitle, executorContext);
+      Assert.assertEquals(after, TestUtil.applyEdits(file.getText(), edit.getChanges().get(path.toLspUri())));
+    });
 
     // checking the quick fix doesn't actually change the file
     final var reloaded = PsiManager.getInstance(getProject()).findFile(file.getVirtualFile());
@@ -114,5 +112,6 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
     final var reloadedDoc = PsiDocumentManager.getInstance(getProject()).getDocument(reloaded);
     Assert.assertNotNull(reloadedDoc);
     Assert.assertEquals(before, reloadedDoc.getText());
+
   }
 }

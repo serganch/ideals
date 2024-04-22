@@ -10,9 +10,9 @@ import com.intellij.find.impl.FindManagerImpl;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.progress.ProcessCanceledException;
+import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.psi.PsiElement;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiInvalidElementAccessException;
@@ -32,31 +32,21 @@ import com.intellij.util.CommonProcessors;
 import com.intellij.util.Processor;
 import com.intellij.util.containers.ContainerUtil;
 import org.eclipse.lsp4j.Location;
-import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.commands.LspCommand;
-import org.rri.ideals.server.util.EditorUtil;
+import org.rri.ideals.server.util.LspProgressIndicator;
 import org.rri.ideals.server.util.MiscUtil;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
-import java.util.Set;
+import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
 public class FindUsagesCommand extends LspCommand<List<? extends Location>> {
   private static final Logger LOG = Logger.getInstance(FindUsagesCommand.class);
-  @NotNull
-  private final Position pos;
-
-  public FindUsagesCommand(@NotNull Position pos) {
-    this.pos = pos;
-  }
 
   @Override
   protected @NotNull Supplier<@NotNull String> getMessageSupplier() {
@@ -70,23 +60,17 @@ public class FindUsagesCommand extends LspCommand<List<? extends Location>> {
 
   @Override
   protected @NotNull List<? extends Location> execute(@NotNull ExecutorContext ctx) {
+    final var editor = ctx.getEditor();
+    assert editor != null;
     PsiFile file = ctx.getPsiFile();
     Document doc = MiscUtil.getDocument(file);
     if (doc == null) {
       return List.of();
     }
-    var disposable = Disposer.newDisposable();
-    try {
-      var target = EditorUtil.computeWithEditor(disposable, file, pos,
-          editor -> TargetElementUtil.findTargetElement(editor, TargetElementUtil.getInstance().getAllAccepted()));
 
-      if (target == null) {
-        return List.of();
-      }
-      return findUsages(ctx.getProject(), target, ctx.getCancelToken());
-    } finally {
-      Disposer.dispose(disposable);
-    }
+    return Optional.ofNullable(TargetElementUtil.findTargetElement(editor, TargetElementUtil.getInstance().getAllAccepted()))
+        .map(target -> findUsages(file.getProject(), target, ctx.getCancelToken()))
+        .orElse(List.of());
   }
 
   private static @NotNull List<@NotNull Location> findUsages(@NotNull Project project,
@@ -94,41 +78,46 @@ public class FindUsagesCommand extends LspCommand<List<? extends Location>> {
                                                              @Nullable CancelChecker cancelToken) {
     var manager = ((FindManagerImpl) FindManager.getInstance(project)).getFindUsagesManager();
     var handler = manager.getFindUsagesHandler(target, FindUsagesHandlerFactory.OperationMode.USAGES_WITH_DEFAULT_OPTIONS);
-    List<Location> result;
-    if (handler != null) {
-      var dialog = handler.getFindUsagesDialog(false, false, false);
-      dialog.close(DialogWrapper.OK_EXIT_CODE);
-      var options = dialog.calcFindUsagesOptions();
-      PsiElement[] primaryElements = handler.getPrimaryElements();
-      PsiElement[] secondaryElements = handler.getSecondaryElements();
-      UsageSearcher searcher = createUsageSearcher(primaryElements, secondaryElements, handler, options, project);
-      Set<Location> saver = ContainerUtil.newConcurrentSet();
-      searcher.generate(usage -> {
-        if (cancelToken != null) {
-          try {
-            cancelToken.checkCanceled();
-          } catch (CancellationException e) {
-            return false;
+
+    return ProgressManager.getInstance().runProcess(() -> {
+      List<Location> result;
+
+      if (handler != null) {
+        var dialog = handler.getFindUsagesDialog(false, false, false);
+        dialog.close(DialogWrapper.OK_EXIT_CODE);
+        var options = dialog.calcFindUsagesOptions();
+        PsiElement[] primaryElements = handler.getPrimaryElements();
+        PsiElement[] secondaryElements = handler.getSecondaryElements();
+        UsageSearcher searcher = createUsageSearcher(primaryElements, secondaryElements, handler, options, project);
+        Set<Location> saver = ContainerUtil.newConcurrentSet();
+        searcher.generate(usage -> {
+          if (cancelToken != null) {
+            try {
+              cancelToken.checkCanceled();
+            } catch (CancellationException e) {
+              return false;
+            }
           }
-        }
-        if (usage instanceof final UsageInfo2UsageAdapter ui2ua && !ui2ua.isNonCodeUsage()) {
-          var elem = ui2ua.getElement();
-          var loc = MiscUtil.psiElementToLocation(elem);
-          if (loc != null) {
-            saver.add(loc);
+          if (usage instanceof final UsageInfo2UsageAdapter ui2ua && !ui2ua.isNonCodeUsage()) {
+            var elem = ui2ua.getElement();
+            var loc = MiscUtil.psiElementToLocation(elem);
+            if (loc != null) {
+              saver.add(loc);
+            }
           }
-        }
-        return true;
-      });
-      result = new ArrayList<>(saver);
-    } else {
-      result = ReferencesSearch.search(target).findAll().stream()
-          .map(PsiReference::getElement)
-          .map(MiscUtil::psiElementToLocation)
-          .filter(Objects::nonNull)
-          .collect(Collectors.toList());
-    }
-    return result;
+          return true;
+        });
+        result = new ArrayList<>(saver);
+      } else {
+        result = ReferencesSearch.search(target).findAll().stream()
+            .map(PsiReference::getElement)
+            .map(MiscUtil::psiElementToLocation)
+            .filter(Objects::nonNull)
+            .collect(Collectors.toList());
+      }
+
+      return result;
+    }, new LspProgressIndicator(cancelToken));
   }
 
   // Took this function from com.intellij.find.findUsages.FindUsagesManager.

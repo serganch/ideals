@@ -39,7 +39,7 @@ import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.CancelChecker;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.jetbrains.annotations.NotNull;
-import org.rri.ideals.server.LspPath;
+import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.completions.util.IconUtil;
 import org.rri.ideals.server.completions.util.TextEditRearranger;
 import org.rri.ideals.server.completions.util.TextEditWithOffsets;
@@ -72,20 +72,17 @@ final public class CompletionService implements Disposable {
   }
 
   @NotNull
-  public List<CompletionItem> computeCompletions(
-      @NotNull LspPath path,
-      @NotNull Position position,
-      @NotNull CancelChecker cancelChecker) {
+  public List<CompletionItem> computeCompletions(@NotNull ExecutorContext executorContext) {
     LOG.info("start completion");
+    final var cancelChecker = executorContext.getCancelToken();
+    assert cancelChecker != null;
     try {
-      var virtualFile = path.findVirtualFile();
-      if (virtualFile == null) {
-        LOG.warn("file not found: " + path);
-        return List.of();
-      }
-      final var psiFile = MiscUtil.resolvePsiFile(project, path);
-      assert psiFile != null;
-      return doComputeCompletions(psiFile, position, cancelChecker);
+      LOG.info("start signature help");
+      final var editor = executorContext.getEditor();
+      assert editor != null;
+      final var psiFile = executorContext.getPsiFile();
+      
+      return doComputeCompletions(psiFile, editor, cancelChecker);
     } finally {
       cancelChecker.checkCanceled();
     }
@@ -287,7 +284,7 @@ final public class CompletionService implements Disposable {
 
 
   private @NotNull List<CompletionItem> doComputeCompletions(@NotNull PsiFile psiFile,
-                                                             @NotNull Position position,
+                                                             @NotNull Editor editor,
                                                              @NotNull CancelChecker cancelChecker) {
     VoidCompletionProcess process = new VoidCompletionProcess();
     Ref<List<CompletionItem>> resultRef = new Ref<>();
@@ -298,46 +295,37 @@ final public class CompletionService implements Disposable {
       var completionDataVersionRef = new Ref<Integer>();
       // invokeAndWait is necessary for editor creation and completion call
       ProgressManager.getInstance().runProcess(() ->
-          ApplicationManager.getApplication().invokeAndWait(
-              () -> EditorUtil.withEditor(process, psiFile,
-                  position,
-                  (editor) -> {
-                    var compInfo = new CompletionInfo(editor, project);
-                    var ideaCompService = com.intellij.codeInsight.completion.CompletionService.getCompletionService();
-                    assert ideaCompService != null;
+          ApplicationManager.getApplication().invokeAndWait(() -> {
+                var compInfo = new CompletionInfo(editor, project);
+                var ideaCompService = com.intellij.codeInsight.completion.CompletionService.getCompletionService();
+                assert ideaCompService != null;
 
-                    ideaCompService.performCompletion(compInfo.getParameters(),
-                        (result) -> {
-                          compInfo.getLookup().addItem(result.getLookupElement(), result.getPrefixMatcher());
-                          compInfo.getArranger().addElement(result);
-                        });
+                ideaCompService.performCompletion(compInfo.getParameters(),
+                    (result) -> {
+                      compInfo.getLookup().addItem(result.getLookupElement(), result.getPrefixMatcher());
+                      compInfo.getArranger().addElement(result);
+                    });
 
-                    var elementsWithMatcher = compInfo.getArranger().getElementsWithMatcher();
-                    lookupElementsWithMatcherRef.set(elementsWithMatcher);
+                var elementsWithMatcher = compInfo.getArranger().getElementsWithMatcher();
+                lookupElementsWithMatcherRef.set(elementsWithMatcher);
 
-                    var document = MiscUtil.getDocument(psiFile);
-                    assert document != null;
+                // version and data manipulations here are thread safe because they are done inside invokeAndWait
+                int newVersion = 1 + cachedDataRef.get().version;
+                completionDataVersionRef.set(newVersion);
 
-                    // version and data manipulations here are thread safe because they are done inside invokeAndWait
-                    int newVersion = 1 + cachedDataRef.get().version;
-                    completionDataVersionRef.set(newVersion);
-
-                    cachedDataRef.set(
-                        new CompletionData(
-                            elementsWithMatcher,
-                            newVersion,
-                            position,
-                            document.getText(),
-                            psiFile.getLanguage()
-                        ));
-                  }
-              )
+                cachedDataRef.set(
+                    new CompletionData(
+                        elementsWithMatcher,
+                        newVersion,
+                        MiscUtil.offsetToPosition(editor.getDocument(), editor.getCaretModel().getOffset()),
+                        editor.getDocument().getText(),
+                        psiFile.getLanguage()
+                    ));
+              }
           ), new LspProgressIndicator(cancelChecker));
       ReadAction.run(() -> {
-        var document = MiscUtil.getDocument(psiFile);
-        assert document != null;
         resultRef.set(convertLookupElementsWithMatcherToCompletionItems(
-            lookupElementsWithMatcherRef.get(), document, position, completionDataVersionRef.get()));
+            lookupElementsWithMatcherRef.get(), editor.getDocument(), MiscUtil.offsetToPosition(editor.getDocument(), editor.getCaretModel().getOffset()), completionDataVersionRef.get()));
       });
     } finally {
       WriteCommandAction.runWriteCommandAction(project, () -> Disposer.dispose(process));

@@ -59,32 +59,27 @@ public class OnTypeFormattingCommand extends FormattingCommandBase {
   }
 
   void typeAndReformatIfNeededInFile(@NotNull PsiFile psiFile) {
-    var disposable = Disposer.newDisposable();
-    try {
-      EditorUtil.withEditor(disposable, psiFile, position, editor -> {
-        var doc = MiscUtil.getDocument(psiFile);
-        assert doc != null;
-        ApplicationManager.getApplication().runWriteAction(() -> {
-          if (!deleteTypedChar(editor, doc)) {
-            return;
-          }
-          PsiDocumentManager.getInstance(psiFile.getProject()).commitDocument(doc);
+    EditorUtil.withEditor(Disposer.newDisposable(), psiFile, position, editor -> {
+      var doc = MiscUtil.getDocument(psiFile);
+      assert doc != null;
+      ApplicationManager.getApplication().runWriteAction(() -> {
+        if (!deleteTypedChar(editor, doc)) {
+          return;
+        }
+        PsiDocumentManager.getInstance(psiFile.getProject()).commitDocument(doc);
 
-          if (editor instanceof EditorEx) {
-            ((EditorEx) editor).setHighlighter(
-                HighlighterFactory.createHighlighter(psiFile.getProject(), psiFile.getFileType()));
-          }
-          doWithTemporaryCodeStyleSettingsForFile(
-              psiFile,
-              () -> TypedAction.getInstance().actionPerformed(
-                  editor,
-                  triggerCharacter,
-                  com.intellij.openapi.editor.ex.util.EditorUtil.getEditorDataContext(editor)));
-        });
+        if (editor instanceof EditorEx) {
+          ((EditorEx) editor).setHighlighter(
+              HighlighterFactory.createHighlighter(psiFile.getProject(), psiFile.getFileType()));
+        }
+        doWithTemporaryCodeStyleSettingsForFile(
+            psiFile,
+            () -> TypedAction.getInstance().actionPerformed(
+                editor,
+                triggerCharacter,
+                com.intellij.openapi.editor.ex.util.EditorUtil.getEditorDataContext(editor)));
       });
-    } finally {
-      Disposer.dispose(disposable);
-    }
+    });
   }
 
   private boolean deleteTypedChar(@NotNull Editor editor, @NotNull Document doc) {

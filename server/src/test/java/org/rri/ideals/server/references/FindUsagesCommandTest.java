@@ -6,7 +6,6 @@ import org.jetbrains.annotations.Nullable;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
-import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.engine.TestEngine;
 import org.rri.ideals.server.generator.IdeaOffsetPositionConverter;
@@ -15,7 +14,7 @@ import org.rri.ideals.server.references.generators.FindUsagesTestGenerator;
 import java.util.HashSet;
 
 @RunWith(JUnit4.class)
-public class FindUsagesCommandTest extends ReferencesCommandTestBase<FindUsagesTestGenerator> {
+public class FindUsagesCommandTest extends ReferencesCommandTestBase<FindUsagesTestGenerator, ReferenceParams> {
   @Test
   public void testFindUsagesJava() {
     checkReferencesByDirectory("java/project-find-usages");
@@ -32,10 +31,8 @@ public class FindUsagesCommandTest extends ReferencesCommandTestBase<FindUsagesT
   }
 
   @Override
-  protected @Nullable Object getActuals(@NotNull Object params) {
-    final ReferenceParams refParams = (ReferenceParams) params;
-    final var path = LspPath.fromLspUri(refParams.getTextDocument().getUri());
-    final var future = new FindUsagesCommand(refParams.getPosition()).runAsync(getProject(), path);
+  protected @Nullable Object getActuals(@NotNull ReferenceParams params) {
+    final var future = new FindUsagesCommand().runAsync(getProject(), params.getTextDocument(), params.getPosition());
     return new HashSet<>(TestUtil.getNonBlockingEdt(future, 50000));
   }
 }

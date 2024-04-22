@@ -5,7 +5,7 @@ import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
 
-final class ActionData {
+public final class ActionData {
   private String uri;
   private Range range;
 
