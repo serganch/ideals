@@ -1,7 +1,6 @@
 package org.rri.ideals.server.formatting;
 
 import com.intellij.openapi.fileTypes.FileType;
-import com.intellij.openapi.util.Disposer;
 import com.jetbrains.python.PythonFileType;
 import org.eclipse.lsp4j.Position;
 import org.eclipse.lsp4j.Range;
@@ -173,7 +172,7 @@ public class FormattingCommandTest extends LspLightBasePlatformTestCase {
                                                                @Nullable Range lspRange) {
     final var actualPsiFile = myFixture.configureByText(fileType, actualText);
 
-    var context = new ExecutorContext(actualPsiFile, Disposer.newDisposable(), null, new TestUtil.DumbCancelChecker());
+    var context = new ExecutorContext(actualPsiFile, myFixture.getEditor(), new TestUtil.DumbCancelChecker());
     var command = new FormattingCommand(lspRange, FormattingTestUtil.defaultOptions());
 
     return TextUtil.differenceAfterAction(actualPsiFile, (copy) -> {

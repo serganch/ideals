@@ -77,12 +77,7 @@ final public class CompletionService implements Disposable {
     final var cancelChecker = executorContext.getCancelToken();
     assert cancelChecker != null;
     try {
-      LOG.info("start signature help");
-      final var editor = executorContext.getEditor();
-      assert editor != null;
-      final var psiFile = executorContext.getPsiFile();
-      
-      return doComputeCompletions(psiFile, editor, cancelChecker);
+      return doComputeCompletions(executorContext.getPsiFile(), executorContext.getEditor(), cancelChecker);
     } finally {
       cancelChecker.checkCanceled();
     }

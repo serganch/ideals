@@ -1,6 +1,7 @@
 package org.rri.ideals.server.references;
 
 import com.intellij.openapi.application.WriteAction;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.newvfs.impl.VfsRootAccess;
 import com.intellij.testFramework.PsiTestUtil;
@@ -47,8 +48,11 @@ public class DefinitionFromLibrarySourcesTest extends LightJavaCodeInsightFixtur
       final var path =
           LspPath.fromLocalPath(
               Paths.get(getTestDataPath()).resolve("src/DefinitionFromJar.java"));
+      final var position = new Position(3, 8);
+      myFixture.openFileInEditor(path.findVirtualFile());
+      myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(position.getLine(), position.getCharacter()));
 
-      final var future = new FindDefinitionCommand().runAsync(getProject(), path.toLspUri(), new Position(3, 8));
+      final var future = new FindDefinitionCommand().runAsync(getProject(), path.toLspUri(), position);
       var actual = TestUtil.getNonBlockingEdt(future, 5000);
 
       assertNotNull(actual);

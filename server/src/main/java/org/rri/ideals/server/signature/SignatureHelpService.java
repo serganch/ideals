@@ -51,7 +51,6 @@ final public class SignatureHelpService implements Disposable {
   public SignatureHelp computeSignatureHelp(@NotNull ExecutorContext executorContext) {
     LOG.info("start signature help");
     final var editor = executorContext.getEditor();
-    assert editor != null;
     final var psiFile = executorContext.getPsiFile();
     final var offset = ReadAction.compute(() -> editor.getCaretModel().getOffset());
     final var cancelChecker = executorContext.getCancelToken();

@@ -18,6 +18,7 @@ public class ReferencesTest extends LspServerTestBase {
   public void definition() {
     final var filePath = LspPath.fromLocalPath(getProjectPath().resolve("src/DefinitionIntegratingTest.java"));
     final var definitionParams = new DefinitionParams(new TextDocumentIdentifier(filePath.toLspUri()), new Position(3, 4));
+    createEditor(LspPath.fromLspUri(definitionParams.getTextDocument().getUri()));
     final var future = server().getTextDocumentService().definition(definitionParams);
     final var result = TestUtil.getNonBlockingEdt(future, 30000);
 
@@ -32,6 +33,7 @@ public class ReferencesTest extends LspServerTestBase {
   public void typeDefinition() {
     final var filePath = LspPath.fromLocalPath(getProjectPath().resolve("src/TypeDefinitionIntegratingTest.java"));
     final var typeDefinitionParams = new TypeDefinitionParams(new TextDocumentIdentifier(filePath.toLspUri()), new Position(11, 16));
+    createEditor(LspPath.fromLspUri(typeDefinitionParams.getTextDocument().getUri()));
     final var future = server().getTextDocumentService().typeDefinition(typeDefinitionParams);
     final var result = TestUtil.getNonBlockingEdt(future, 30000);
 
@@ -46,6 +48,7 @@ public class ReferencesTest extends LspServerTestBase {
   public void findUsages() {
     final var filePath = LspPath.fromLocalPath(getProjectPath().resolve("src/FindUsagesIntegratingTest.java"));
     final var findUsagesParams = new ReferenceParams(new TextDocumentIdentifier(filePath.toLspUri()), new Position(3, 4), new ReferenceContext());
+    createEditor(LspPath.fromLspUri(findUsagesParams.getTextDocument().getUri()));
     final var future = server().getTextDocumentService().references(findUsagesParams);
     final var result = TestUtil.getNonBlockingEdt(future, 30000);
 
@@ -60,6 +63,7 @@ public class ReferencesTest extends LspServerTestBase {
     final var filePath = LspPath.fromLocalPath(getProjectPath().resolve("src/DocumentHighlightIntegratingTest.java"));
     assertNotNull(filePath.findVirtualFile());
     final var documentHighlightParams = new DocumentHighlightParams(new TextDocumentIdentifier(filePath.toLspUri()), new Position(2, 8));
+    createEditor(LspPath.fromLspUri(documentHighlightParams.getTextDocument().getUri()));
     final var future = server().getTextDocumentService().documentHighlight(documentHighlightParams);
     final var result = TestUtil.getNonBlockingEdt(future, 30000);
     assertEquals(2, result.size());

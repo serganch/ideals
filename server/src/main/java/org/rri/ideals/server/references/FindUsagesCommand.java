@@ -8,13 +8,11 @@ import com.intellij.find.findUsages.FindUsagesHandlerFactory;
 import com.intellij.find.findUsages.FindUsagesOptions;
 import com.intellij.find.impl.FindManagerImpl;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.progress.ProcessCanceledException;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.DialogWrapper;
 import com.intellij.psi.PsiElement;
-import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiInvalidElementAccessException;
 import com.intellij.psi.PsiReference;
 import com.intellij.psi.search.GlobalSearchScope;
@@ -61,12 +59,7 @@ public class FindUsagesCommand extends LspCommand<List<? extends Location>> {
   @Override
   protected @NotNull List<? extends Location> execute(@NotNull ExecutorContext ctx) {
     final var editor = ctx.getEditor();
-    assert editor != null;
-    PsiFile file = ctx.getPsiFile();
-    Document doc = MiscUtil.getDocument(file);
-    if (doc == null) {
-      return List.of();
-    }
+    final var file = ctx.getPsiFile();
 
     return Optional.ofNullable(TargetElementUtil.findTargetElement(editor, TargetElementUtil.getInstance().getAllAccepted()))
         .map(target -> findUsages(file.getProject(), target, ctx.getCancelToken()))

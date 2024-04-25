@@ -1,5 +1,6 @@
 package org.rri.ideals.server.codeactions;
 
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.util.Disposer;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiManager;
@@ -13,7 +14,6 @@ import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.diagnostics.DiagnosticsTestBase;
-import org.rri.ideals.server.util.EditorUtil;
 
 import java.util.stream.Stream;
 
@@ -47,23 +47,21 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
     final var file = myFixture.configureByText("test.java", text);
     final var orExpressionRange = TestUtil.newRange(2, 8, 2, 8);
     final var codeActionService = getProject().getService(CodeActionService.class);
-    final var disposable = Disposer.newDisposable();
 
-    EditorUtil.withEditor(disposable, file, orExpressionRange.getStart(), editor -> {
-      final var executorContext = new ExecutorContext(file, disposable, editor, null);
-      final var codeActionsBeforeDiagnostic = codeActionService.getCodeActions(orExpressionRange, executorContext);
+    myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(orExpressionRange.getStart().getLine(), orExpressionRange.getStart().getCharacter()));
+    final var executorContext = new ExecutorContext(file, myFixture.getEditor(), null);
+    final var codeActionsBeforeDiagnostic = codeActionService.getCodeActions(orExpressionRange, executorContext);
 
-      Assert.assertTrue(codeActionsBeforeDiagnostic.stream().allMatch(it -> it.getKind().equals(CodeActionKind.Refactor)));
-      Assert.assertEquals(expectedIntentions, codeActionsBeforeDiagnostic.stream().map(CodeAction::getTitle).sorted().toList());
+    Assert.assertTrue(codeActionsBeforeDiagnostic.stream().allMatch(it -> it.getKind().equals(CodeActionKind.Refactor)));
+    Assert.assertEquals(expectedIntentions, codeActionsBeforeDiagnostic.stream().map(CodeAction::getTitle).sorted().toList());
 
-      runAndGetDiagnostics(file);
+    runAndGetDiagnostics(file);
 
-      final var quickFixes = codeActionService.getCodeActions(orExpressionRange, executorContext);
-      quickFixes.removeAll(codeActionsBeforeDiagnostic);
+    final var quickFixes = codeActionService.getCodeActions(orExpressionRange, executorContext);
+    quickFixes.removeAll(codeActionsBeforeDiagnostic);
 
-      Assert.assertTrue(quickFixes.stream().allMatch(it -> it.getKind().equals(CodeActionKind.QuickFix)));
-      Assert.assertEquals(expectedQuickFixes, quickFixes.stream().map(CodeAction::getTitle).sorted().toList());
-    });
+    Assert.assertTrue(quickFixes.stream().allMatch(it -> it.getKind().equals(CodeActionKind.QuickFix)));
+    Assert.assertEquals(expectedQuickFixes, quickFixes.stream().map(CodeAction::getTitle).sorted().toList());
   }
 
 
@@ -89,21 +87,20 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
     final var codeActionService = getProject().getService(CodeActionService.class);
     final var disposable = Disposer.newDisposable();
 
-    EditorUtil.withEditor(disposable, file, xVariableRange.getStart(), editor -> {
-      final var executorContext = new ExecutorContext(file, disposable, editor, null);
+    myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(xVariableRange.getStart().getLine(), xVariableRange.getStart().getCharacter()));
+    final var executorContext = new ExecutorContext(file, myFixture.getEditor(), null);
 
-      runAndGetDiagnostics(file);
+    runAndGetDiagnostics(file);
 
-      final var codeActions = codeActionService.getCodeActions(xVariableRange, executorContext);
+    final var codeActions = codeActionService.getCodeActions(xVariableRange, executorContext);
 
-      var action = codeActions.stream()
-          .filter(it -> it.getTitle().equals(actionTitle))
-          .findFirst()
-          .orElseThrow(() -> new AssertionError("action not found"));
+    var action = codeActions.stream()
+        .filter(it -> it.getTitle().equals(actionTitle))
+        .findFirst()
+        .orElseThrow(() -> new AssertionError("action not found"));
 
-      final var edit = codeActionService.applyCodeAction((ActionData) action.getData(), actionTitle, executorContext);
-      Assert.assertEquals(after, TestUtil.applyEdits(file.getText(), edit.getChanges().get(path.toLspUri())));
-    });
+    final var edit = codeActionService.applyCodeAction((ActionData) action.getData(), actionTitle, executorContext);
+    Assert.assertEquals(after, TestUtil.applyEdits(file.getText(), edit.getChanges().get(path.toLspUri())));
 
     // checking the quick fix doesn't actually change the file
     final var reloaded = PsiManager.getInstance(getProject()).findFile(file.getVirtualFile());

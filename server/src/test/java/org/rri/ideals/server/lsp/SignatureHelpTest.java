@@ -20,6 +20,7 @@ public class SignatureHelpTest extends LspServerTestBase {
     SignatureHelpParams params = new SignatureHelpParams();
     params.setTextDocument(new TextDocumentIdentifier(filePath.toLspUri()));
     params.setPosition(new Position(4, 8));
+    createEditor(LspPath.fromLspUri(params.getTextDocument().getUri()));
     var actual =
         TestUtil.getNonBlockingEdt(server().getTextDocumentService().signatureHelp(params), 30000);
     var expected = new SignatureHelp();

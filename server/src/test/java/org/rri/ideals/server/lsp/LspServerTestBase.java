@@ -1,5 +1,8 @@
 package org.rri.ideals.server.lsp;
 
+import com.intellij.openapi.editor.Editor;
+import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.ex.ProjectManagerEx;
 import com.intellij.testFramework.HeavyPlatformTestCase;
 import org.eclipse.lsp4j.ClientCapabilities;
@@ -10,6 +13,7 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.LspServer;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.mocks.MockLanguageClient;
@@ -43,6 +47,14 @@ public abstract class LspServerTestBase extends HeavyPlatformTestCase {
 
   protected abstract String getProjectRelativePath();
 
+  protected Editor createEditor(@NotNull LspPath path) {
+    final var instance = FileEditorManager.getInstance(myProject);
+    final var file = path.findVirtualFile();
+
+    if (file == null || file.getFileType().isBinary()) return null;
+
+    return instance.openTextEditor(new OpenFileDescriptor(myProject, file, 0), false);
+  }
 
   @NotNull
   protected final LspServer server() {
@@ -78,6 +90,7 @@ public abstract class LspServerTestBase extends HeavyPlatformTestCase {
     final var initializeParams = new InitializeParams();
     setupInitializeParams(initializeParams);
     TestUtil.getNonBlockingEdt(server.initialize(initializeParams), 30000);
+    myProject = server.getProject();
   }
 
   @Before

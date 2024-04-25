@@ -44,13 +44,9 @@ public class RenameCommand extends LspCommand<WorkspaceEdit> {
   protected @Nullable WorkspaceEdit execute(@NotNull ExecutorContext ctx) {
     final var file = ctx.getPsiFile();
     final var editor = ctx.getEditor();
-    assert editor != null;
-    Document doc = MiscUtil.getDocument(file);
-    if (doc == null) {
-      return null;
-    }
     var elementRef = new Ref<PsiElement>();
     var elementToRename = TargetElementUtil.findTargetElement(editor, TargetElementUtil.getInstance().getAllAccepted());
+
     if (elementToRename != null) {
       final var processor = RenamePsiElementProcessor.forElement(elementToRename);
       final var newElementToRename = processor.substituteElementToRename(elementToRename, editor);

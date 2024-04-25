@@ -23,6 +23,7 @@ public class SymbolTest extends LspServerTestBase {
   public void documentSymbol() {
     final var filePath = LspPath.fromLocalPath(getProjectPath().resolve("src/DocumentSymbolIntegratingTest.java"));
     final var params = new DocumentSymbolParams(new TextDocumentIdentifier(filePath.toLspUri()));
+    createEditor(LspPath.fromLspUri(params.getTextDocument().getUri()));
     final var future = server().getTextDocumentService().documentSymbol(params);
     final var result = TestUtil.getNonBlockingEdt(future, 30000).stream()
         .map(Either::getRight)

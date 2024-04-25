@@ -1,8 +1,7 @@
 package org.rri.ideals.server.util;
 
-import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.util.Disposer;
 import com.intellij.psi.PsiFile;
 import com.intellij.util.concurrency.AppExecutorUtil;
 import org.eclipse.lsp4j.Position;
@@ -11,6 +10,7 @@ import org.eclipse.lsp4j.jsonrpc.CompletableFutures;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.rri.ideals.server.LspPath;
+import org.rri.ideals.server.ManagedDocuments;
 import org.rri.ideals.server.commands.ExecutorContext;
 
 import java.util.Optional;
@@ -22,16 +22,17 @@ public class AsyncExecutor<R> {
   private final boolean cancellable;
   private final boolean runInEDT;
   private final Executor executor = AppExecutorUtil.getAppExecutorService();
+  @NotNull
+  private final Project project;
   @Nullable
   private final PsiFile psiFile;
-  private final Project project;
   @Nullable
   private final Position position;
 
   private AsyncExecutor(@NotNull Builder<R> builder) {
     this.cancellable = builder.cancellable;
-    this.psiFile = builder.psiFile;
     this.project = builder.project;
+    this.psiFile = builder.psiFile;
     this.position = builder.position;
     this.runInEDT = builder.runInEDT;
   }
@@ -50,15 +51,23 @@ public class AsyncExecutor<R> {
 
   private @Nullable R getResult(@NotNull Function<ExecutorContext, R> action,
                                 @Nullable CancelChecker cancelToken) {
-    if (psiFile == null) {
+    final var editor = MiscUtil.computeInEDTAndWait(() -> {
+      final var textEditor = Optional.ofNullable(psiFile)
+          .map(file -> project.getService(ManagedDocuments.class).getSelectedEditor(file.getVirtualFile()))
+          .orElse(null);
+
+      if (textEditor != null && position != null) {
+        textEditor.getCaretModel().moveToLogicalPosition(new LogicalPosition(position.getLine(), position.getCharacter()));
+      }
+
+      return textEditor;
+    });
+
+    if (editor == null || psiFile == null) {
       return null;
     }
 
-    final var disposable = Disposer.newDisposable();
-    final var editor = Optional.ofNullable(position)
-        .map(pos -> MiscUtil.computeInEDTAndWait(() -> EditorUtil.createEditor(disposable, psiFile, pos)))
-        .orElse(null);
-    final var context = new ExecutorContext(psiFile, disposable, editor, cancelToken);
+    final var context = new ExecutorContext(psiFile, editor, cancelToken);
 
     try {
       if (runInEDT) {
@@ -67,7 +76,6 @@ public class AsyncExecutor<R> {
         return action.apply(context);
       }
     } finally {
-      ApplicationManager.getApplication().invokeAndWait(() -> Disposer.dispose(disposable));
       if (cancelToken != null) {
         cancelToken.checkCanceled();
       }

@@ -11,6 +11,7 @@ import org.jetbrains.annotations.NotNull;
 import org.junit.Assert;
 import org.junit.Test;
 import org.junit.jupiter.api.Assertions;
+import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.completions.CompletionServiceTestUtil;
 import org.rri.ideals.server.completions.generators.CompletionTestGenerator;
@@ -56,6 +57,7 @@ public class CompletionTest extends LspServerTestWithEngineBase {
     test = generator.generateTests().get(0);
 
     var params = test.params();
+    createEditor(LspPath.fromLspUri(test.params().getTextDocument().getUri()));
     Ref<Either<List<CompletionItem>, CompletionList>> completionResRef = new Ref<>();
 
     Assertions.assertDoesNotThrow(() -> completionResRef.set(

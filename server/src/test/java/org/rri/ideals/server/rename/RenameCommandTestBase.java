@@ -1,5 +1,6 @@
 package org.rri.ideals.server.rename;
 
+import com.intellij.openapi.editor.LogicalPosition;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
 import org.jetbrains.annotations.NotNull;
@@ -48,6 +49,8 @@ abstract class RenameCommandTestBase extends LspLightBasePlatformTestCase {
       answer = new WorkspaceEdit(Stream.concat(changedEdits.stream(), changedOperations.stream()).toList());
     }
 
+    myFixture.openFileInEditor(renameTestPath.findVirtualFile());
+    myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(pos.getLine(), pos.getCharacter()));
     final var future = new RenameCommand(newName).runAsync(getProject(), renameTestPath.toLspUri(), pos);
     final var result = TestUtil.getNonBlockingEdt(future, 50000);
 

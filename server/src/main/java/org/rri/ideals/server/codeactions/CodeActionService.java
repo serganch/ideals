@@ -63,11 +63,9 @@ public final class CodeActionService {
     final var result = new Ref<List<CodeAction>>();
     final var file = executorContext.getPsiFile();
     final var path = LspPath.fromVirtualFile(file.getVirtualFile());
-    final var editor = executorContext.getEditor();
-    assert editor != null;
 
     final var actionInfo = MiscUtil.computeInEDTAndWait(() ->
-        ShowIntentionsPass.getActionsToShow(editor, file, true)
+        ShowIntentionsPass.getActionsToShow(executorContext.getEditor(), file, true)
     );
 
     final var quickFixes = diagnostics().getQuickFixes(path, range).stream()
@@ -93,7 +91,6 @@ public final class CodeActionService {
   public WorkspaceEdit applyCodeAction(@NotNull ActionData actionData, String title, ExecutorContext executorContext) {
     final var result = new WorkspaceEdit();
     final var editor = executorContext.getEditor();
-    assert editor != null;
     final var psiFile = executorContext.getPsiFile();
     final var path = LspPath.fromVirtualFile(psiFile.getVirtualFile());
     final var oldCopy = ((PsiFile) psiFile.copy());

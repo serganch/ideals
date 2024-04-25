@@ -19,6 +19,7 @@ public class RenameTest extends LspServerTestBase {
     final var newName = "aaa";
     final var filePath = LspPath.fromLocalPath(getProjectPath().resolve("src/RenameIntegrationTest.java"));
     final var renameParams = new RenameParams(new TextDocumentIdentifier(filePath.toLspUri()), new Position(2, 9), newName);
+    createEditor(LspPath.fromLspUri(renameParams.getTextDocument().getUri()));
     final var future = server().getTextDocumentService().rename(renameParams);
     final var result = TestUtil.getNonBlockingEdt(future, 30000);
 

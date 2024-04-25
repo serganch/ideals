@@ -2,11 +2,13 @@ package org.rri.ideals.server;
 
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.diagnostic.Logger;
+import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.ProgressManagerListener;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.DumbService;
 import com.intellij.openapi.project.Project;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.messages.MessageBusConnection;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -162,6 +164,11 @@ public class LspServer implements LanguageServer, LanguageClientAware, LspSessio
     messageBusConnection.disconnect();
 
     if (project != null) {
+      final var editorManager = FileEditorManager.getInstance(project);
+      for (VirtualFile openFile : editorManager.getOpenFiles()) {
+        editorManager.closeFile(openFile);
+      }
+
       ProjectService.getInstance().closeProject(project);
       this.project = null;
     }

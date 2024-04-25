@@ -4,7 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.intellij.ide.highlighter.JavaFileType;
-import com.intellij.openapi.util.Disposer;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.util.Key;
 import com.intellij.psi.PsiFile;
 import com.intellij.testFramework.TestModeFlags;
@@ -25,7 +25,6 @@ import org.rri.ideals.server.completions.generators.CompletionTestGenerator;
 import org.rri.ideals.server.engine.IdeaTestFixture;
 import org.rri.ideals.server.engine.TestEngine;
 import org.rri.ideals.server.generator.IdeaOffsetPositionConverter;
-import org.rri.ideals.server.util.EditorUtil;
 import org.rri.ideals.server.util.MiscUtil;
 
 import java.util.ArrayList;
@@ -154,9 +153,9 @@ public class CompletionServiceTest extends LspLightBasePlatformTestCase {
     testWithEngine(new CompletionTestParams("python-function-without-parameter-project", completionItem -> Objects.equals(completionItem.getLabel(), "foo"),
         new MarkupContent(MarkupKind.MARKDOWN,
             """
-                  `/src/python-function-without-parameter-project/src/test.py`
+                 `/src/python-function-without-parameter-project/src/test.py`
 
-                 def foo() -> None"""), null));
+                def foo() -> None"""), null));
   }
 
   @Test
@@ -177,7 +176,7 @@ public class CompletionServiceTest extends LspLightBasePlatformTestCase {
         new MarkupContent(MarkupKind.MARKDOWN,
             """
                 for $INDEX$, $VAR$ in enumerate($ITERABLE$): $END$
-                
+                                
                 Iterate (for ... in enumerate)"""), null)));
   }
 
@@ -218,7 +217,7 @@ public class CompletionServiceTest extends LspLightBasePlatformTestCase {
         new MarkupContent(MarkupKind.MARKDOWN,
             """
                 for ($ELEMENT\\_TYPE$ $VAR$ : $ITERABLE\\_TYPE$) { $END$ }
-                
+                                
                 Iterate Iterable or array"""
         ), null)));
   }
@@ -243,7 +242,7 @@ public class CompletionServiceTest extends LspLightBasePlatformTestCase {
         new MarkupContent(MarkupKind.MARKDOWN,
             """
                 for(int $INDEX$ = 0; $INDEX$ < $ARRAY$.length; $INDEX$++) { $ELEMENT\\_TYPE$ $VAR$ = $ARRAY$\\[$INDEX$\\]; $END$ }
-                
+                                
                 Iterate elements of array"""
         ), null)));
   }
@@ -265,33 +264,32 @@ public class CompletionServiceTest extends LspLightBasePlatformTestCase {
     final var params = test.params();
     final var expectedText = test.expected();
     final var cs = getProject().getService(CompletionService.class);
-    final var disposable = Disposer.newDisposable();
     final var psiFile = MiscUtil.resolvePsiFile(getProject(), LspPath.fromLspUri(params.getTextDocument().getUri()));
+    myFixture.openFileInEditor(psiFile.getVirtualFile());
+    myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(params.getPosition().getLine(), params.getPosition().getCharacter()));
 
-    EditorUtil.withEditor(disposable, psiFile, params.getPosition(), editor -> {
-      var completionItems = cs.computeCompletions(new ExecutorContext(psiFile, disposable, editor, new TestUtil.DumbCancelChecker()));
-      if (completionTestParams.finder != null) {
-        var compItem = completionItems.stream().filter(completionTestParams.finder).findFirst().orElseThrow();
-        compItem.setData(gson.fromJson(gson.toJson(compItem.getData()), JsonObject.class));
-        var resolved = cs.resolveCompletion(compItem, new TestUtil.DumbCancelChecker());
-        assertNotNull(expectedText);
-        assertNotNull(test.getSourceText());
-        var allEdits = new ArrayList<TextEdit>();
-        allEdits.add(resolved.getTextEdit().getLeft());
-        allEdits.addAll(resolved.getAdditionalTextEdits());
-        assertEquals(expectedText, TestUtil.applyEdits(test.getSourceText(), allEdits));
+    var completionItems = cs.computeCompletions(new ExecutorContext(psiFile, myFixture.getEditor(), new TestUtil.DumbCancelChecker()));
+    if (completionTestParams.finder != null) {
+      var compItem = completionItems.stream().filter(completionTestParams.finder).findFirst().orElseThrow();
+      compItem.setData(gson.fromJson(gson.toJson(compItem.getData()), JsonObject.class));
+      var resolved = cs.resolveCompletion(compItem, new TestUtil.DumbCancelChecker());
+      assertNotNull(expectedText);
+      assertNotNull(test.getSourceText());
+      var allEdits = new ArrayList<TextEdit>();
+      allEdits.add(resolved.getTextEdit().getLeft());
+      allEdits.addAll(resolved.getAdditionalTextEdits());
+      assertEquals(expectedText, TestUtil.applyEdits(test.getSourceText(), allEdits));
 
-        if (completionTestParams.documentation != null) {
-          assertEquals(completionTestParams.documentation, compItem.getDocumentation().getRight());
-        } else {
-          assertNull(compItem.getDocumentation());
-        }
+      if (completionTestParams.documentation != null) {
+        assertEquals(completionTestParams.documentation, compItem.getDocumentation().getRight());
+      } else {
+        assertNull(compItem.getDocumentation());
       }
-      if (completionTestParams.expectedItems != null) {
-        assertEquals(completionTestParams.expectedItems(),
-            completionItems.stream().map(CompletionServiceTestUtil::removeResolveInfo).collect(Collectors.toSet()));
-      }
-    });
+    }
+    if (completionTestParams.expectedItems != null) {
+      assertEquals(completionTestParams.expectedItems(),
+          completionItems.stream().map(CompletionServiceTestUtil::removeResolveInfo).collect(Collectors.toSet()));
+    }
   }
 
   @Test
@@ -351,10 +349,9 @@ public class CompletionServiceTest extends LspLightBasePlatformTestCase {
   private List<@NotNull CompletionItem> getCompletionListAtPosition(@NotNull PsiFile file,
                                                                     @NotNull Position position,
                                                                     @NotNull CancelChecker cancelChecker) {
-    final var disposable = Disposer.newDisposable();
-    return EditorUtil.computeWithEditor(disposable, file, position, editor ->
-        getProject().getService(CompletionService.class).computeCompletions(
-            new ExecutorContext(file, disposable, editor, cancelChecker)));
+    myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(position.getLine(), position.getCharacter()));
+    return getProject().getService(CompletionService.class).computeCompletions(
+        new ExecutorContext(file, myFixture.getEditor(), cancelChecker));
   }
 
   static private void runWithTemplateFlags(@NotNull Runnable action) {

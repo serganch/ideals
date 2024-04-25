@@ -39,7 +39,6 @@ abstract class FindDefinitionCommandBase extends LspCommand<Either<List<? extend
   @Override
   protected @NotNull Either<List<? extends Location>, @NotNull List<? extends LocationLink>> execute(@NotNull ExecutorContext ctx) {
     final var editor = ctx.getEditor();
-    assert editor != null;
     final var file = ctx.getPsiFile();
     final var doc = editor.getDocument();
     final var offset = editor.getCaretModel().getOffset();

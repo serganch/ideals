@@ -1,6 +1,5 @@
 package org.rri.ideals.server.symbol;
 
-import com.intellij.openapi.util.Disposer;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.psi.PsiManager;
 import org.eclipse.lsp4j.DocumentSymbol;
@@ -117,7 +116,7 @@ public class DocumentSymbolServiceTest extends LspLightBasePlatformTestCase {
         newRange(12, 8, 12, 20),
         newRange(12, 13, 12, 13));
     final var docSymVarX = documentSymbol("x", Field,
-        newRange(11,  8, 11, 14),
+        newRange(11, 8, 11, 14),
         newRange(11, 13, 11, 13));
 
     final var docSymClass = documentSymbol("Document_symbol(cls2.Class2)", Class,
@@ -195,7 +194,7 @@ public class DocumentSymbolServiceTest extends LspLightBasePlatformTestCase {
         newRange(28, 4, 28, 4));
 
     final var docSymFile = documentSymbol("DocumentSymbol.kt", File,
-        newRange(0, 0, 29, 0  ),
+        newRange(0, 0, 29, 0),
         newRange(0, 0, 0, 0),
         arrayList(enumLetters, interInterface, annotationClassForTest, docSymClass, funcBuz));
 
@@ -206,17 +205,14 @@ public class DocumentSymbolServiceTest extends LspLightBasePlatformTestCase {
   private void checkDocumentSymbols(@NotNull List<@NotNull DocumentSymbol> answers, @Nullable VirtualFile virtualFile) {
     assertNotNull(virtualFile);
     final var service = getProject().getService(DocumentSymbolService.class);
-    final var disposable = Disposer.newDisposable();
-    try {
-      final var psiFile = PsiManager.getInstance(getProject()).findFile(virtualFile);
-      assertNotNull(psiFile);
-      var actual = service.computeDocumentSymbols(
-              new ExecutorContext(psiFile, disposable, null, new TestUtil.DumbCancelChecker()))
-          .stream().map(Either::getRight).toList();
-      assertEquals(answers, actual);
-    } finally {
-      Disposer.dispose(disposable);
-    }
+    final var psiFile = PsiManager.getInstance(getProject()).findFile(virtualFile);
+    assertNotNull(psiFile);
+    myFixture.openFileInEditor(virtualFile);
+
+    var actual = service.computeDocumentSymbols(
+            new ExecutorContext(psiFile, myFixture.getEditor(), new TestUtil.DumbCancelChecker()))
+        .stream().map(Either::getRight).toList();
+    assertEquals(answers, actual);
   }
 
   @NotNull

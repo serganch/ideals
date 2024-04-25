@@ -54,11 +54,8 @@ public class DocumentHighlightCommand extends LspCommand<List<? extends Document
 
   @Override
   protected @NotNull List<? extends DocumentHighlight> execute(@NotNull ExecutorContext ctx) {
-    final var editor = ctx.getEditor();
-    assert editor != null;
-
     try {
-      return findHighlights(ctx.getPsiFile().getProject(), editor, ctx.getPsiFile());
+      return findHighlights(ctx.getPsiFile().getProject(), ctx.getEditor(), ctx.getPsiFile());
     } catch (IndexNotReadyException e) {
       return List.of();
     }

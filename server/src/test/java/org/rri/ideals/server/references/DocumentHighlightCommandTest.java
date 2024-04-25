@@ -1,5 +1,6 @@
 package org.rri.ideals.server.references;
 
+import com.intellij.openapi.editor.LogicalPosition;
 import org.eclipse.lsp4j.DocumentHighlight;
 import org.eclipse.lsp4j.DocumentHighlightKind;
 import org.eclipse.lsp4j.Position;
@@ -73,6 +74,8 @@ public class DocumentHighlightCommandTest extends ReferencesCommandTestBase {
   private void checkHighlight(@NotNull Set<@NotNull DocumentHighlight> answers,
                                 @NotNull Position pos,
                                 @NotNull LspPath path) {
+    myFixture.openFileInEditor(path.findVirtualFile());
+    myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(pos.getLine(), pos.getCharacter()));
     final var future = new DocumentHighlightCommand().runAsync(getProject(), path.toLspUri(), pos);
     final var lst = TestUtil.getNonBlockingEdt(future, 50000);
     assertNotNull(lst);

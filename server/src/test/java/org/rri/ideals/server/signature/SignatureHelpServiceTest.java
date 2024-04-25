@@ -2,6 +2,7 @@ package org.rri.ideals.server.signature;
 
 import com.intellij.codeInsight.hint.ParameterInfoListener;
 import com.intellij.ide.highlighter.JavaFileType;
+import com.intellij.openapi.editor.LogicalPosition;
 import com.intellij.openapi.fileTypes.LanguageFileType;
 import com.intellij.openapi.util.Disposer;
 import com.jetbrains.python.PythonFileType;
@@ -18,7 +19,6 @@ import org.junit.runners.JUnit4;
 import org.rri.ideals.server.LspLightBasePlatformTestCase;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.commands.ExecutorContext;
-import org.rri.ideals.server.util.EditorUtil;
 
 import java.util.List;
 
@@ -78,7 +78,7 @@ public class SignatureHelpServiceTest extends LspLightBasePlatformTestCase {
     final var text = """
         def foo(x: int, y: int):
             return x + y
-        
+                
         foo(1, )
         """;
     var expected =
@@ -202,13 +202,12 @@ public class SignatureHelpServiceTest extends LspLightBasePlatformTestCase {
     signatureHelpService.setEdtFlushRunnable(defaultFlushRunnable());
     final var disposable = Disposer.newDisposable();
 
-    EditorUtil.withEditor(disposable, file, pos, editor -> {
-      var signatureHelp =
-          signatureHelpService.computeSignatureHelp(new ExecutorContext(file, disposable, editor, cancelChecker));
-      assertNotNull(signatureHelp);
-      assertEquals(activeSignature, signatureHelp.getActiveSignature());
-      assertEquals(expected, signatureHelp.getSignatures());
-    });
+    myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(pos.getLine(), pos.getCharacter()));
+    var signatureHelp =
+        signatureHelpService.computeSignatureHelp(new ExecutorContext(file, myFixture.getEditor(), cancelChecker));
+    assertNotNull(signatureHelp);
+    assertEquals(activeSignature, signatureHelp.getActiveSignature());
+    assertEquals(expected, signatureHelp.getSignatures());
   }
 
   @NotNull
@@ -219,7 +218,7 @@ public class SignatureHelpServiceTest extends LspLightBasePlatformTestCase {
         label,
         (String) null,
         parameterInformationList
-        );
+    );
     ans.setActiveParameter(activeParameter);
     return ans;
   }

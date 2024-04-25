@@ -2,6 +2,7 @@ package org.rri.ideals.server.lsp;
 
 import org.jetbrains.annotations.NotNull;
 import org.junit.Test;
+import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.generator.IdeaOffsetPositionConverter;
 import org.rri.ideals.server.references.generators.TypeDefinitionTestGenerator;
@@ -22,6 +23,7 @@ public class GotoTypeDefinitionTest extends LspServerTestWithEngineBase {
       final var params = test.params();
       final var answer = test.expected();
 
+      createEditor(LspPath.fromLspUri(test.params().getTextDocument().getUri()));
       final var future = server().getTextDocumentService().typeDefinition(params);
       final var actual = TestUtil.getNonBlockingEdt(future, 50000);
 

@@ -4,7 +4,6 @@ import com.intellij.ide.highlighter.HighlighterFactory;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.WriteCommandAction;
 import com.intellij.openapi.diagnostic.Logger;
-import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.editor.EditorModificationUtilEx;
 import com.intellij.openapi.editor.LogicalPosition;
@@ -19,7 +18,6 @@ import org.eclipse.lsp4j.TextEdit;
 import org.jetbrains.annotations.NotNull;
 import org.rri.ideals.server.commands.ExecutorContext;
 import org.rri.ideals.server.util.EditorUtil;
-import org.rri.ideals.server.util.MiscUtil;
 import org.rri.ideals.server.util.TextUtil;
 
 import java.util.List;
@@ -60,13 +58,11 @@ public class OnTypeFormattingCommand extends FormattingCommandBase {
 
   void typeAndReformatIfNeededInFile(@NotNull PsiFile psiFile) {
     EditorUtil.withEditor(Disposer.newDisposable(), psiFile, position, editor -> {
-      var doc = MiscUtil.getDocument(psiFile);
-      assert doc != null;
       ApplicationManager.getApplication().runWriteAction(() -> {
-        if (!deleteTypedChar(editor, doc)) {
+        if (!deleteTypedChar(editor)) {
           return;
         }
-        PsiDocumentManager.getInstance(psiFile.getProject()).commitDocument(doc);
+        PsiDocumentManager.getInstance(psiFile.getProject()).commitDocument(editor.getDocument());
 
         if (editor instanceof EditorEx) {
           ((EditorEx) editor).setHighlighter(
@@ -82,10 +78,10 @@ public class OnTypeFormattingCommand extends FormattingCommandBase {
     });
   }
 
-  private boolean deleteTypedChar(@NotNull Editor editor, @NotNull Document doc) {
-    var insertedCharPos = MiscUtil.positionToOffset(doc, position) - 1;
+  private boolean deleteTypedChar(@NotNull Editor editor) {
+    var insertedCharPos = editor.getCaretModel().getOffset() - 1;
 
-    if (doc.getText().charAt(insertedCharPos) != triggerCharacter) {
+    if (editor.getDocument().getText().charAt(insertedCharPos) != triggerCharacter) {
       // if triggered character and actual are not the same
       LOG.warn("Inserted and triggered characters are not the same");
       return false;
