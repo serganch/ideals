@@ -10,15 +10,15 @@ import org.junit.Assert;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
+import org.rri.ideals.server.LspLightBasePlatformTestCase;
 import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.TestUtil;
 import org.rri.ideals.server.commands.ExecutorContext;
-import org.rri.ideals.server.diagnostics.DiagnosticsTestBase;
 
 import java.util.stream.Stream;
 
 @RunWith(JUnit4.class)
-public class CodeActionServiceTest extends DiagnosticsTestBase {
+public class CodeActionServiceTest extends LspLightBasePlatformTestCase {
 
   @Test
   public void testGetCodeActions() {
@@ -38,9 +38,6 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
     ).sorted().toList();
 
     final var expectedQuickFixes = Stream.of(
-        "Wrap using 'java.util.Optional'",
-        "Wrap using 'null()'",
-        "Adapt using call or new object",
         "Change variable 'a' type to 'String'"
     ).sorted().toList();
 
@@ -55,7 +52,7 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
     Assert.assertTrue(codeActionsBeforeDiagnostic.stream().allMatch(it -> it.getKind().equals(CodeActionKind.Refactor)));
     Assert.assertEquals(expectedIntentions, codeActionsBeforeDiagnostic.stream().map(CodeAction::getTitle).sorted().toList());
 
-    runAndGetDiagnostics(file);
+    myFixture.doHighlighting();
 
     final var quickFixes = codeActionService.getCodeActions(orExpressionRange, executorContext);
     quickFixes.removeAll(codeActionsBeforeDiagnostic);
@@ -90,7 +87,7 @@ public class CodeActionServiceTest extends DiagnosticsTestBase {
     myFixture.getEditor().getCaretModel().moveToLogicalPosition(new LogicalPosition(xVariableRange.getStart().getLine(), xVariableRange.getStart().getCharacter()));
     final var executorContext = new ExecutorContext(file, myFixture.getEditor(), null);
 
-    runAndGetDiagnostics(file);
+    myFixture.doHighlighting();
 
     final var codeActions = codeActionService.getCodeActions(xVariableRange, executorContext);
 

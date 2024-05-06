@@ -12,7 +12,6 @@ import org.jetbrains.annotations.NotNull;
 import org.rri.ideals.server.codeactions.ActionData;
 import org.rri.ideals.server.codeactions.CodeActionService;
 import org.rri.ideals.server.completions.CompletionService;
-import org.rri.ideals.server.diagnostics.DiagnosticsService;
 import org.rri.ideals.server.formatting.FormattingCommand;
 import org.rri.ideals.server.formatting.OnTypeFormattingCommand;
 import org.rri.ideals.server.references.*;
@@ -43,7 +42,6 @@ public class MyTextDocumentService implements TextDocumentService {
 
     Metrics.run(() -> "didOpen: " + path, () -> {
       documents().startManaging(textDocument);
-      diagnostics().launchDiagnostics(path);
 
       if (DumbService.isDumb(session.getProject())) {
         LOG.debug("Sending indexing started: " + path);
@@ -64,20 +62,17 @@ public class MyTextDocumentService implements TextDocumentService {
 
     Metrics.run(() -> "didChange: " + path, () -> {
       documents().updateDocument(params);
-      diagnostics().launchDiagnostics(path);
     });
   }
 
   @Override
   public void didClose(DidCloseTextDocumentParams params) {
-    diagnostics().haltDiagnostics(LspPath.fromLspUri(params.getTextDocument().getUri()));
     documents().stopManaging(params.getTextDocument());
   }
 
   @Override
   public void didSave(DidSaveTextDocumentParams params) {
     documents().syncDocument(params.getTextDocument());
-    diagnostics().launchDiagnostics(LspPath.fromLspUri(params.getTextDocument().getUri()));
   }
 
   @Override
@@ -150,19 +145,9 @@ public class MyTextDocumentService implements TextDocumentService {
     });
   }
 
-  public void refreshDiagnostics() {
-    LOG.info("Start refreshing diagnostics for all opened documents");
-    documents().forEach(diagnostics()::launchDiagnostics);
-  }
-
   @NotNull
   private ManagedDocuments documents() {
     return session.getProject().getService(ManagedDocuments.class);
-  }
-
-  @NotNull
-  private DiagnosticsService diagnostics() {
-    return session.getProject().getService(DiagnosticsService.class);
   }
 
   @NotNull

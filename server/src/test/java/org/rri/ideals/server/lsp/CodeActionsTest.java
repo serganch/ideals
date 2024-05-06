@@ -3,6 +3,7 @@ package org.rri.ideals.server.lsp;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
+import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
 import com.intellij.psi.PsiManager;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -27,9 +28,8 @@ public class CodeActionsTest extends LspServerTestBase {
     var invokedActionName = "Change variable 'a' type to 'String'";
 
     var expectedActions = Stream.of(
-        "Wrap using 'java.util.Optional'",
-        "Wrap using 'null()'",
-        "Adapt using call or new object",
+        "Copy string literal text to the clipboard",
+        "Split into declaration and assignment",
         invokedActionName
     ).sorted().toList();
 
@@ -46,6 +46,7 @@ public class CodeActionsTest extends LspServerTestBase {
 
     server().getTextDocumentService().didOpen(didOpenTextDocumentParams);
 
+    DaemonCodeAnalyzer.getInstance(myProject).restart();
     client().waitAndGetDiagnosticsPublished();
 
     final var params = new CodeActionParams();

@@ -1,10 +1,15 @@
 package org.rri.ideals.server.lsp;
 
+import com.intellij.openapi.application.WriteAction;
 import com.intellij.openapi.editor.Editor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileEditor.OpenFileDescriptor;
 import com.intellij.openapi.project.ex.ProjectManagerEx;
+import com.intellij.openapi.roots.ex.ProjectRootManagerEx;
+import com.intellij.openapi.vfs.LocalFileSystem;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.HeavyPlatformTestCase;
+import com.intellij.testFramework.PsiTestUtil;
 import org.eclipse.lsp4j.ClientCapabilities;
 import org.eclipse.lsp4j.InitializeParams;
 import org.eclipse.lsp4j.WorkspaceFolder;
@@ -46,6 +51,10 @@ public abstract class LspServerTestBase extends HeavyPlatformTestCase {
   }
 
   protected abstract String getProjectRelativePath();
+
+  protected String getSourceRoot() {
+    return "src";
+  }
 
   protected Editor createEditor(@NotNull LspPath path) {
     final var instance = FileEditorManager.getInstance(myProject);
@@ -91,6 +100,16 @@ public abstract class LspServerTestBase extends HeavyPlatformTestCase {
     setupInitializeParams(initializeParams);
     TestUtil.getNonBlockingEdt(server.initialize(initializeParams), 30000);
     myProject = server.getProject();
+
+    WriteAction.runAndWait(() ->
+        ProjectRootManagerEx.getInstanceEx(myProject).mergeRootsChangesDuring(() -> {
+          setUpModule();
+          setUpJdk();
+        })
+    );
+
+    VirtualFile vDir = LocalFileSystem.getInstance().refreshAndFindFileByPath(getProjectPath().resolve(getSourceRoot()).toString());
+    PsiTestUtil.addSourceContentToRoots(myModule, vDir);
   }
 
   @Before

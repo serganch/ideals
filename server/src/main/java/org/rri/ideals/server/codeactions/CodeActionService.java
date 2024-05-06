@@ -20,7 +20,6 @@ import org.eclipse.lsp4j.WorkspaceEdit;
 import org.jetbrains.annotations.NotNull;
 import org.rri.ideals.server.LspPath;
 import org.rri.ideals.server.commands.ExecutorContext;
-import org.rri.ideals.server.diagnostics.DiagnosticsService;
 import org.rri.ideals.server.util.MiscUtil;
 import org.rri.ideals.server.util.TextUtil;
 
@@ -41,17 +40,6 @@ public final class CodeActionService {
   }
 
   @NotNull
-  private static CodeAction toCodeAction(@NotNull LspPath path,
-                                         @NotNull Range range,
-                                         @NotNull HighlightInfo.IntentionActionDescriptor descriptor,
-                                         @NotNull String kind) {
-    return MiscUtil.with(new CodeAction(ReadAction.compute(() -> descriptor.getAction().getText())), ca -> {
-      ca.setKind(kind);
-      ca.setData(new ActionData(path.toLspUri(), range));
-    });
-  }
-
-  @NotNull
   private static <T> Predicate<T> distinctByKey(@NotNull Function<? super T, ?> keyExtractor) {
     Set<Object> seen = new HashSet<>();
     return t -> seen.add(keyExtractor.apply(t));
@@ -68,15 +56,16 @@ public final class CodeActionService {
         ShowIntentionsPass.getActionsToShow(executorContext.getEditor(), file, true)
     );
 
-    final var quickFixes = diagnostics().getQuickFixes(path, range).stream()
-        .map(it -> toCodeAction(path, range, it, CodeActionKind.QuickFix));
-
     final var intentionActions = Stream.of(
-            actionInfo.errorFixesToShow,
-            actionInfo.inspectionFixesToShow,
             actionInfo.intentionsToShow)
         .flatMap(Collection::stream)
         .map(it -> toCodeAction(path, range, it, CodeActionKind.Refactor));
+
+    final var quickFixes = Stream.of(
+            actionInfo.errorFixesToShow,
+            actionInfo.inspectionFixesToShow)
+        .flatMap(Collection::stream)
+        .map(it -> toCodeAction(path, range, it, CodeActionKind.QuickFix));
 
     final var actions = Stream.concat(quickFixes, intentionActions)
         .filter(distinctByKey(CodeAction::getTitle))
@@ -96,11 +85,9 @@ public final class CodeActionService {
     final var oldCopy = ((PsiFile) psiFile.copy());
 
     ApplicationManager.getApplication().invokeAndWait(() -> {
-      final var quickFixes = diagnostics().getQuickFixes(path, actionData.getRange());
       final var actionInfo = ShowIntentionsPass.getActionsToShow(editor, psiFile, true);
 
       var actionFound = Stream.of(
-              quickFixes,
               actionInfo.errorFixesToShow,
               actionInfo.inspectionFixesToShow,
               actionInfo.intentionsToShow)
@@ -135,17 +122,20 @@ public final class CodeActionService {
     });
 
     if (!edits.isEmpty()) {
-      diagnostics().haltDiagnostics(path);  // all cached quick fixes are no longer valid
       result.setChanges(Map.of(actionData.getUri(), edits));
     }
 
-    diagnostics().launchDiagnostics(path);
     return result;
   }
 
   @NotNull
-  private DiagnosticsService diagnostics() {
-    return project.getService(DiagnosticsService.class);
+  private CodeAction toCodeAction(@NotNull LspPath path,
+                                  @NotNull Range range,
+                                  @NotNull HighlightInfo.IntentionActionDescriptor descriptor,
+                                  @NotNull String kind) {
+    return MiscUtil.with(new CodeAction(ReadAction.compute(() -> descriptor.getAction().getText())), ca -> {
+      ca.setKind(kind);
+      ca.setData(new ActionData(path.toLspUri(), range));
+    });
   }
-
 }

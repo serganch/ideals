@@ -1,5 +1,6 @@
 package org.rri.ideals.server;
 
+import com.intellij.codeInsight.daemon.impl.EditorTracker;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.command.CommandProcessor;
 import com.intellij.openapi.command.UndoConfirmationPolicy;
@@ -21,10 +22,10 @@ import org.jetbrains.annotations.Nullable;
 import org.rri.ideals.server.util.MiscUtil;
 import org.rri.ideals.server.util.TextUtil;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
 
 @Service(Service.Level.PROJECT)
 final public class ManagedDocuments {
@@ -75,6 +76,13 @@ final public class ManagedDocuments {
         PsiDocumentManager.getInstance(project).commitDocument(doc);
       }
 
+      // In a unit test, active editors are not updated automatically
+      if (ApplicationManager.getApplication().isUnitTestMode()) {
+        final var editors = new ArrayList<Editor>(EditorTracker.getInstance(project).getActiveEditors());
+        editors.add(editor);
+        EditorTracker.getInstance(project).setActiveEditors(editors);
+      }
+
 /*  todo not sure if we need this
         if (client != null) {
           server?.let { registerIndexNotifier(project, client, it) }
@@ -91,7 +99,6 @@ final public class ManagedDocuments {
         .filter(version -> version != 0)
         .orElse(null);
     docs.put(path, new VersionedTextDocumentIdentifier(uri, docVersion));
-
   }
 
 
@@ -208,10 +215,6 @@ final public class ManagedDocuments {
     if (docs.remove(path) == null) {
       LOG.warn("Attempted to close document without opening it at: " + path);
     }
-  }
-
-  public void forEach(@NotNull Consumer<LspPath> receiver) {
-    docs.keySet().forEach(receiver);
   }
 
   public @Nullable Editor getSelectedEditor(VirtualFile virtualFile) {

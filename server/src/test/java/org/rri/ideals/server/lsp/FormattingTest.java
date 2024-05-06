@@ -20,6 +20,11 @@ public class FormattingTest extends LspServerTestBase {
     return "formatting/formatting-project";
   }
 
+  @Override
+  protected String getSourceRoot() {
+    return "";
+  }
+
   @Test
   public void wholeFileFormatting() {
     final var expected = Set.of(
