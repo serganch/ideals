@@ -174,7 +174,7 @@ final public class ManagedDocuments {
           if (doc == null)
             return; // todo handle
 
-          VirtualFileManager.getInstance().syncRefresh();
+          VirtualFileManager.getInstance().refreshWithoutFileWatcher(false);
           FileDocumentManager.getInstance().reloadFromDisk(doc);
           PsiDocumentManager.getInstance(project).commitAllDocuments();
         })));
